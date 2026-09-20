@@ -22,7 +22,11 @@ Repo: <https://github.com/crispvibe/Acode-Desktop> · License: [PolyForm Noncomm
 - 🔓 **No account system**: no sign-up, no login, nothing goes through the cloud
 - 🖥 **Four platforms**: macOS / Windows as the host, iOS / Android as the client
 
+More CLIs (cursor-agent, Gemini CLI, etc.) are planned — contributions welcome.
+
 ## Quick start
+
+**Prerequisite**: install Claude Code (`claude`) or Codex (`codex`) CLI on the host computer.
 
 **Desktop host** (pick one):
 

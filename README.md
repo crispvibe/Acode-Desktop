@@ -22,7 +22,11 @@
 - 🔓 **没有账号体系**：不注册、不登录、不过云，打开就完事
 - 🖥 **四端**：macOS / Windows 当电脑端，iOS / Android 当手机端
 
+更多 CLI（cursor-agent、Gemini CLI 等）规划中，欢迎 PR。
+
 ## 快速开始
+
+**前置要求**：电脑端需安装 Claude Code（`claude`）或 Codex（`codex`）CLI。
 
 **电脑端**（任选一个当 host）：
 

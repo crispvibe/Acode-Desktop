@@ -9,6 +9,7 @@
 - **许可变更**：MIT → PolyForm Noncommercial 1.0.0，仅限个人非商业使用，禁止商用；四端"关于"页加入版权与许可说明。
 - **清理**：删除旧账号体系相关文档与设计图（登录/注册设计图、三份旧体系审计报告、Windows 交接文档、progress.txt）；删除官网设计稿与账号时代设备列表设计图；清理 iOS 本地化表中 130+ 条登录/注册/账号/设备码/信令/TURN 死文案，移除 `RemoteUserFacingText` 中已死的连接审批/权益映射方法与 `codevokeAuthGlass*` 死代码、Android `AuthGlass*` 死 token；脚本残留旧名统一为 acode。
 - **仓库**：更名为 `crispvibe/Acode-Desktop`，远端仅保留 `main` 单一分支。
+- **文档**：README 明确当前支持 Claude Code / Codex 两个 CLI，更多 CLI（cursor-agent、Gemini CLI 等）规划中，欢迎贡献适配。
 
 ## 0.3.0 · 开源化 + 纯局域网
 
