@@ -20,19 +20,8 @@
 		AC1000000000000000000011 /* InputBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000011 /* InputBarView.swift */; };
 		AC1000000000000000000012 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000012 /* SettingsView.swift */; };
 		AC1000000000000000000013 /* VisualStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000013 /* VisualStyle.swift */; };
-		AC1000000000000000000017 /* RemoteAuthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000017 /* RemoteAuthModels.swift */; };
-		AC1000000000000000000018 /* RemoteAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000018 /* RemoteAPIClient.swift */; };
-		AC1000000000000000000019 /* RemoteAuthClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000019 /* RemoteAuthClient.swift */; };
-		AC1000000000000000000020 /* RemoteLegalClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000020 /* RemoteLegalClient.swift */; };
-		AC1000000000000000000021 /* RemoteTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000021 /* RemoteTokenStore.swift */; };
-		AC1000000000000000000022 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000022 /* AuthViewModel.swift */; };
 		AC1000000000000000000029 /* PanelStateMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000029 /* PanelStateMirror.swift */; };
 		AC1000000000000000000023 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000023 /* AppRootView.swift */; };
-		AC1000000000000000000024 /* AuthRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000024 /* AuthRootView.swift */; };
-		AC1000000000000000000025 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000025 /* LoginView.swift */; };
-		AC1000000000000000000026 /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000026 /* RegisterView.swift */; };
-		AC1000000000000000000027 /* ForgotPasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000027 /* ForgotPasswordView.swift */; };
-		AC1000000000000000000028 /* AuthComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000028 /* AuthComponents.swift */; };
 		AC1000000000000000000014 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000014 /* Assets.xcassets */; };
 		AC1000000000000000000041 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000041 /* PrivacyInfo.xcprivacy */; };
 		AC1000000000000000000042 /* CodevokeLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000042 /* CodevokeLocalization.swift */; };
@@ -40,18 +29,12 @@
 		AC1000000000000000000044 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = AC4000000000000000000011 /* InfoPlist.strings */; };
 		ACHC00000000000000000001 /* ChatCore in Frameworks */ = {isa = PBXBuildFile; productRef = ACHC00000000000000000003 /* ChatCore */; };
 		ACHU00000000000000000001 /* ChatUI in Frameworks */ = {isa = PBXBuildFile; productRef = ACHU00000000000000000003 /* ChatUI */; };
-		AC1000000000000000000040 /* RemoteWebRTCTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000040 /* RemoteWebRTCTransport.swift */; };
-		AC1000000000000000000047 /* RemoteTunnelTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000047 /* RemoteTunnelTransport.swift */; };
 		ACWEBRTC000000000000001 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = ACWEBRTC000000000000003 /* WebRTC */; };
-			AC1000000000000000000030 /* RemoteDeviceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000030 /* RemoteDeviceClient.swift */; };
 			AC1000000000000000000031 /* DeviceListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000031 /* DeviceListViewModel.swift */; };
 			AC1000000000000000000032 /* DeviceConnectViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000032 /* DeviceConnectViewModel.swift */; };
 			AC1000000000000000000033 /* DeviceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000033 /* DeviceListView.swift */; };
-			AC1000000000000000000034 /* DeviceCodeEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000034 /* DeviceCodeEntryView.swift */; };
 			AC1000000000000000000035 /* RemoteTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000035 /* RemoteTransport.swift */; };
 			AC1000000000000000000036 /* RemoteTransportFrameCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000036 /* RemoteTransportFrameCodec.swift */; };
-			AC1000000000000000000037 /* DeviceIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000037 /* DeviceIdentityStore.swift */; };
-			AC1000000000000000000038 /* SignalingClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000038 /* SignalingClient.swift */; };
 			AC1000000000000000000039 /* RemoteUserFacingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000039 /* RemoteUserFacingText.swift */; };
 			AC1000000000000000000048 /* LanNetworkSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000048 /* LanNetworkSelector.swift */; };
 			AC1000000000000000000049 /* LanSubnetProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000049 /* LanSubnetProbe.swift */; };
@@ -71,19 +54,8 @@
 		AC2000000000000000000011 /* InputBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBarView.swift; sourceTree = "<group>"; };
 		AC2000000000000000000012 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AC2000000000000000000013 /* VisualStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualStyle.swift; sourceTree = "<group>"; };
-		AC2000000000000000000017 /* RemoteAuthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAuthModels.swift; sourceTree = "<group>"; };
-		AC2000000000000000000018 /* RemoteAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAPIClient.swift; sourceTree = "<group>"; };
-		AC2000000000000000000019 /* RemoteAuthClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAuthClient.swift; sourceTree = "<group>"; };
-		AC2000000000000000000020 /* RemoteLegalClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteLegalClient.swift; sourceTree = "<group>"; };
-		AC2000000000000000000021 /* RemoteTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTokenStore.swift; sourceTree = "<group>"; };
-		AC2000000000000000000022 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		AC2000000000000000000029 /* PanelStateMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelStateMirror.swift; sourceTree = "<group>"; };
 		AC2000000000000000000023 /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
-		AC2000000000000000000024 /* AuthRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthRootView.swift; sourceTree = "<group>"; };
-		AC2000000000000000000025 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		AC2000000000000000000026 /* RegisterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegisterView.swift; sourceTree = "<group>"; };
-		AC2000000000000000000027 /* ForgotPasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgotPasswordView.swift; sourceTree = "<group>"; };
-		AC2000000000000000000028 /* AuthComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthComponents.swift; sourceTree = "<group>"; };
 		AC2000000000000000000014 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AC2000000000000000000015 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AC2000000000000000000016 /* Codevoke.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Codevoke.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -93,18 +65,12 @@
 		AC2000000000000000000044 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		AC2000000000000000000045 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		AC2000000000000000000046 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
-			AC2000000000000000000030 /* RemoteDeviceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDeviceClient.swift; sourceTree = "<group>"; };
 			AC2000000000000000000031 /* DeviceListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceListViewModel.swift; sourceTree = "<group>"; };
 			AC2000000000000000000032 /* DeviceConnectViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceConnectViewModel.swift; sourceTree = "<group>"; };
 			AC2000000000000000000033 /* DeviceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceListView.swift; sourceTree = "<group>"; };
-			AC2000000000000000000034 /* DeviceCodeEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCodeEntryView.swift; sourceTree = "<group>"; };
 			AC2000000000000000000035 /* RemoteTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTransport.swift; sourceTree = "<group>"; };
 			AC2000000000000000000036 /* RemoteTransportFrameCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTransportFrameCodec.swift; sourceTree = "<group>"; };
-			AC2000000000000000000037 /* DeviceIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentityStore.swift; sourceTree = "<group>"; };
-			AC2000000000000000000038 /* SignalingClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalingClient.swift; sourceTree = "<group>"; };
 			AC2000000000000000000039 /* RemoteUserFacingText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteUserFacingText.swift; sourceTree = "<group>"; };
-			AC2000000000000000000040 /* RemoteWebRTCTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteWebRTCTransport.swift; sourceTree = "<group>"; };
-			AC2000000000000000000047 /* RemoteTunnelTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTunnelTransport.swift; sourceTree = "<group>"; };
 			AC2000000000000000000048 /* LanNetworkSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanNetworkSelector.swift; sourceTree = "<group>"; };
 			AC2000000000000000000049 /* LanSubnetProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanSubnetProbe.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -116,7 +82,6 @@
 			files = (
 				ACHC00000000000000000001 /* ChatCore in Frameworks */,
 				ACHU00000000000000000001 /* ChatUI in Frameworks */,
-				ACWEBRTC000000000000001 /* WebRTC in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -174,7 +139,6 @@
 			isa = PBXGroup;
 			children = (
 				AC2000000000000000000002 /* RemoteModels.swift */,
-				AC2000000000000000000017 /* RemoteAuthModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -185,17 +149,8 @@
 				AC2000000000000000000003 /* RemoteChatConfig.swift */,
 				AC2000000000000000000004 /* RemoteHTTPClient.swift */,
 				AC2000000000000000000005 /* RemoteWebSocketClient.swift */,
-				AC2000000000000000000018 /* RemoteAPIClient.swift */,
-				AC2000000000000000000019 /* RemoteAuthClient.swift */,
-				AC2000000000000000000020 /* RemoteLegalClient.swift */,
-				AC2000000000000000000021 /* RemoteTokenStore.swift */,
 					AC2000000000000000000035 /* RemoteTransport.swift */,
 					AC2000000000000000000036 /* RemoteTransportFrameCodec.swift */,
-					AC2000000000000000000037 /* DeviceIdentityStore.swift */,
-					AC2000000000000000000038 /* SignalingClient.swift */,
-					AC2000000000000000000030 /* RemoteDeviceClient.swift */,
-					AC2000000000000000000040 /* RemoteWebRTCTransport.swift */,
-					AC2000000000000000000047 /* RemoteTunnelTransport.swift */,
 					AC2000000000000000000048 /* LanNetworkSelector.swift */,
 					AC2000000000000000000049 /* LanSubnetProbe.swift */,
 			);
@@ -206,7 +161,6 @@
 			isa = PBXGroup;
 			children = (
 				AC2000000000000000000006 /* ChatViewModel.swift */,
-				AC2000000000000000000022 /* AuthViewModel.swift */,
 				AC2000000000000000000029 /* PanelStateMirror.swift */,
 					AC2000000000000000000031 /* DeviceListViewModel.swift */,
 					AC2000000000000000000032 /* DeviceConnectViewModel.swift */,
@@ -218,7 +172,6 @@
 			isa = PBXGroup;
 			children = (
 				AC2000000000000000000023 /* AppRootView.swift */,
-				AC4000000000000000000008 /* Auth */,
 				AC2000000000000000000007 /* RootView.swift */,
 				AC2000000000000000000008 /* SidebarView.swift */,
 				AC2000000000000000000009 /* ChatView.swift */,
@@ -227,7 +180,6 @@
 				AC2000000000000000000012 /* SettingsView.swift */,
 				AC2000000000000000000013 /* VisualStyle.swift */,
 					AC2000000000000000000033 /* DeviceListView.swift */,
-					AC2000000000000000000034 /* DeviceCodeEntryView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -239,18 +191,6 @@
 				AC2000000000000000000042 /* CodevokeLocalization.swift */,
 			);
 			path = Utils;
-			sourceTree = "<group>";
-		};
-		AC4000000000000000000008 /* Auth */ = {
-			isa = PBXGroup;
-			children = (
-				AC2000000000000000000024 /* AuthRootView.swift */,
-				AC2000000000000000000025 /* LoginView.swift */,
-				AC2000000000000000000026 /* RegisterView.swift */,
-				AC2000000000000000000027 /* ForgotPasswordView.swift */,
-				AC2000000000000000000028 /* AuthComponents.swift */,
-			);
-			path = Auth;
 			sourceTree = "<group>";
 		};
 		AC4000000000000000000007 /* Products */ = {
@@ -271,7 +211,6 @@
 				AC6000000000000000000001 /* Sources */,
 				AC3000000000000000000001 /* Frameworks */,
 				AC7000000000000000000001 /* Resources */,
-				AC7000000000000000000002 /* Generate WebRTC dSYM */,
 			);
 			buildRules = (
 			);
@@ -281,7 +220,6 @@
 			packageProductDependencies = (
 				ACHC00000000000000000003 /* ChatCore */,
 				ACHU00000000000000000003 /* ChatUI */,
-				ACWEBRTC000000000000003 /* WebRTC */,
 			);
 			productName = Codevoke;
 			productReference = AC2000000000000000000016 /* Codevoke.app */;
@@ -314,7 +252,6 @@
 			packageReferences = (
 				ACHC00000000000000000002 /* XCLocalSwiftPackageReference "../Shared/ChatCore" */,
 				ACHU00000000000000000002 /* XCLocalSwiftPackageReference "../Shared/ChatUI" */,
-				ACWEBRTC000000000000002 /* XCRemoteSwiftPackageReference "WebRTC" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AC4000000000000000000007 /* Products */;
@@ -341,31 +278,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		AC7000000000000000000002 /* Generate WebRTC dSYM */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/scripts/generate-webrtc-dsym.sh",
-				"$(BUILT_PRODUCTS_DIR)/WebRTC.framework/WebRTC",
-				"$(BUILT_PRODUCTS_DIR)/WebRTC.framework/Info.plist",
-			);
-			name = "Generate WebRTC dSYM";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Info.plist",
-				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/DWARF/WebRTC",
-				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations/aarch64/WebRTC.yml",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "scripts/generate-webrtc-dsym.sh";
-		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -386,30 +298,13 @@
 				AC1000000000000000000011 /* InputBarView.swift in Sources */,
 				AC1000000000000000000012 /* SettingsView.swift in Sources */,
 				AC1000000000000000000013 /* VisualStyle.swift in Sources */,
-				AC1000000000000000000017 /* RemoteAuthModels.swift in Sources */,
-				AC1000000000000000000018 /* RemoteAPIClient.swift in Sources */,
-				AC1000000000000000000019 /* RemoteAuthClient.swift in Sources */,
-				AC1000000000000000000020 /* RemoteLegalClient.swift in Sources */,
-				AC1000000000000000000021 /* RemoteTokenStore.swift in Sources */,
 					AC1000000000000000000035 /* RemoteTransport.swift in Sources */,
 					AC1000000000000000000036 /* RemoteTransportFrameCodec.swift in Sources */,
-					AC1000000000000000000037 /* DeviceIdentityStore.swift in Sources */,
-					AC1000000000000000000038 /* SignalingClient.swift in Sources */,
-					AC1000000000000000000040 /* RemoteWebRTCTransport.swift in Sources */,
-					AC1000000000000000000047 /* RemoteTunnelTransport.swift in Sources */,
-				AC1000000000000000000022 /* AuthViewModel.swift in Sources */,
 				AC1000000000000000000029 /* PanelStateMirror.swift in Sources */,
 				AC1000000000000000000023 /* AppRootView.swift in Sources */,
-				AC1000000000000000000024 /* AuthRootView.swift in Sources */,
-				AC1000000000000000000025 /* LoginView.swift in Sources */,
-				AC1000000000000000000026 /* RegisterView.swift in Sources */,
-				AC1000000000000000000027 /* ForgotPasswordView.swift in Sources */,
-				AC1000000000000000000028 /* AuthComponents.swift in Sources */,
-					AC1000000000000000000030 /* RemoteDeviceClient.swift in Sources */,
 					AC1000000000000000000031 /* DeviceListViewModel.swift in Sources */,
 					AC1000000000000000000032 /* DeviceConnectViewModel.swift in Sources */,
 				AC1000000000000000000033 /* DeviceListView.swift in Sources */,
-				AC1000000000000000000034 /* DeviceCodeEntryView.swift in Sources */,
 				AC1000000000000000000039 /* RemoteUserFacingText.swift in Sources */,
 				AC1000000000000000000042 /* CodevokeLocalization.swift in Sources */,
 				AC1000000000000000000048 /* LanNetworkSelector.swift in Sources */,
@@ -606,17 +501,6 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		ACWEBRTC000000000000002 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/stasel/WebRTC";
-			requirement = {
-				kind = exactVersion;
-				version = 140.0.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
 /* Begin XCSwiftPackageProductDependency section */
 		ACHC00000000000000000003 /* ChatCore */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -627,11 +511,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = ACHU00000000000000000002 /* XCLocalSwiftPackageReference "../Shared/ChatUI" */;
 			productName = ChatUI;
-		};
-		ACWEBRTC000000000000003 /* WebRTC */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = ACWEBRTC000000000000002 /* XCRemoteSwiftPackageReference "WebRTC" */;
-			productName = WebRTC;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -5,7 +5,7 @@ import Foundation
 ///
 /// - `GET /health`：连接前 reachability 探测。
 /// - `GET /projects/{id}/files`：iOS 侧栏文件树（主代理决策保留）。
-/// - `POST /attachments`：直连 HTTP 可用时的附件预上传；P2P 模式由恢复通道兜底。
+/// - `POST /attachments`：附件预上传；WebSocket 恢复通道兜底。
 struct RemoteHTTPClient {
     let config: RemoteChatConfig
     private let session: URLSession
@@ -21,7 +21,7 @@ struct RemoteHTTPClient {
     }
 
     func fetchHealth() async throws -> RemoteHealth {
-        try await get("/health", authorized: false)
+        try await get("/health")
     }
 
     /// 文件树仍走 HTTP（主代理决策保留）。
@@ -47,7 +47,6 @@ struct RemoteHTTPClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 60
-        request.setValue("Bearer \(config.token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -77,15 +76,12 @@ struct RemoteHTTPClient {
         }
     }
 
-    private func get<T: Decodable>(_ path: String, authorized: Bool = true) async throws -> T {
+    private func get<T: Decodable>(_ path: String) async throws -> T {
         guard let baseURL = config.baseURL else { throw RemoteChatError.invalidURL }
         guard let url = URL(string: path, relativeTo: baseURL) else { throw RemoteChatError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 20
-        if authorized {
-            request.setValue("Bearer \(config.token)", forHTTPHeaderField: "Authorization")
-        }
 
         debugLog("GET \(path)")
         do {

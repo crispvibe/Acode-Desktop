@@ -41,12 +41,6 @@ private struct RemoteRecoveryRequestError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-private enum RemoteTransportPath: String {
-    case lan
-    case p2p
-    case tunnel
-}
-
 @MainActor
 final class ChatViewModel: ObservableObject {
 
@@ -109,30 +103,14 @@ final class ChatViewModel: ObservableObject {
     /// successful connect. Drives exponential backoff (1s → 2s → 4s → 8s →
     /// 16s → 30s cap). Reset to 0 on a successful `onConnect`.
     private var reconnectAttempt: Int = 0
-    /// Audit A-P1: 401 from the WS handshake means the token is wrong.
-    /// Auto-reconnect would just loop. Latch this and require explicit user
-    /// action (re-enter token in Settings) to clear.
-    private var authFailureBlockingReconnect = false
     private var panelStateEnvelopeSequence = 0
     private var refreshRequestSnapshotAfterConnect = false
-    private var currentConnectStartedAt: Date?
-    private var didReportFirstPanelStateLatency = false
-    private var activeTransportPath: RemoteTransportPath?
-    private var didStartP2PForConnection = false
-    private var p2pStartInProgress = false
     private var foregroundRefreshTask: Task<Void, Never>?
     private var uploadStateRevision = 0
     private let maxAttachmentBytes = 10 * 1024 * 1024
     private let maxTotalAttachmentBytes = 20 * 1024 * 1024
-    private var usesRemoteDataChannel: Bool {
-        activeTransportPath == .p2p || activeTransportPath == .tunnel
-    }
     private var supportsActiveDirectHTTP: Bool {
-        guard config.supportsDirectHTTP else { return false }
-        return activeTransportPath != .p2p && activeTransportPath != .tunnel
-    }
-    private var hasP2PTransportMetadata: Bool {
-        config.connectionId != nil && config.targetDeviceId != nil && config.remoteAccessToken != nil
+        config.isComplete
     }
 
     /// snapshot/patch 镜像。
@@ -181,22 +159,14 @@ final class ChatViewModel: ObservableObject {
 
     init(initialConfig: RemoteChatConfig? = nil) {
         let defaults = UserDefaults.standard
-        let savedConnectionId = defaults.object(forKey: "remote.connectionId") as? Int
         config = initialConfig ?? RemoteChatConfig(
-            macHost: defaults.string(forKey: "remote.macHost") ?? "127.0.0.1",
-            port: defaults.object(forKey: "remote.port") == nil ? 18765 : defaults.integer(forKey: "remote.port"),
-            token: defaults.string(forKey: "remote.token") ?? "",
-            connectionId: savedConnectionId,
-            transport: defaults.string(forKey: "remote.transport"),
-            reason: defaults.string(forKey: "remote.reason")
+            macHost: defaults.string(forKey: "remote.macHost") ?? "",
+            port: defaults.object(forKey: "remote.port") == nil ? DeviceConnectViewModel.defaultPort : defaults.integer(forKey: "remote.port")
         )
         collapseToolsByDefault = defaults.object(forKey: "ui.collapseTools") == nil ? true : defaults.bool(forKey: "ui.collapseTools")
         _localSelectedProjectId = defaults.string(forKey: Self.persistedProjectFocusKey).flatMap(UUID.init(uuidString:))
         focusedSessionId = defaults.string(forKey: Self.persistedSessionFocusKey).flatMap(UUID.init(uuidString:))
         isSettingsPresented = !config.isComplete
-        if let connectionId = config.connectionId {
-            appendDebug(RemoteUserFacingText.diagnostics(connectionId: connectionId, transport: config.transport, reason: config.reason) ?? "远程连接信息已恢复。")
-        }
     }
 
     // MARK: - Connection lifecycle
@@ -206,24 +176,12 @@ final class ChatViewModel: ObservableObject {
         let defaults = UserDefaults.standard
         defaults.set(config.macHost, forKey: "remote.macHost")
         defaults.set(config.port, forKey: "remote.port")
-        defaults.set(config.token, forKey: "remote.token")
-        if let connectionId = config.connectionId {
-            defaults.set(connectionId, forKey: "remote.connectionId")
-        } else {
-            defaults.removeObject(forKey: "remote.connectionId")
-        }
-        if let transport = config.transport {
-            defaults.set(transport, forKey: "remote.transport")
-        } else {
-            defaults.removeObject(forKey: "remote.transport")
-        }
-        if let reason = config.reason {
-            defaults.set(reason, forKey: "remote.reason")
-        } else {
-            defaults.removeObject(forKey: "remote.reason")
-        }
+        // Drop keys from the pre-LAN-only builds.
+        defaults.removeObject(forKey: "remote.token")
+        defaults.removeObject(forKey: "remote.connectionId")
+        defaults.removeObject(forKey: "remote.transport")
+        defaults.removeObject(forKey: "remote.reason")
         webSocketGeneration += 1
-        didStartP2PForConnection = false
         disconnectCurrentTransport()
         mirror.clearAll()
         currentSnapshot = nil
@@ -298,11 +256,8 @@ final class ChatViewModel: ObservableObject {
                     _ = try await client.fetchHealth()
                     appendDebug("refresh health ok")
                 } catch {
-                    guard hasP2PTransportMetadata else { throw error }
-                    appendDebug("refresh health failed; will use P2P transport: \(error.localizedDescription)")
+                    throw error
                 }
-            } else if usesRemoteDataChannel || hasP2PTransportMetadata {
-                appendDebug("refresh health skipped: remote data channel transport")
             } else {
                 throw RemoteChatError.missingConfiguration
             }
@@ -331,20 +286,14 @@ final class ChatViewModel: ObservableObject {
                 self.appendDebug("refresh filesReloaded=\(filesReloaded)")
             }
 
-            let panelStateTimeout: UInt64 = usesRemoteDataChannel ? 8_000_000_000 : 3_000_000_000
+            let panelStateTimeout: UInt64 = 3_000_000_000
             let receivedPanelState = await waitForPanelState(after: baselineEnvelopeSequence, timeoutNanoseconds: panelStateTimeout)
             appendDebug("refresh panelStateReceived=\(receivedPanelState)")
             if !receivedPanelState, !forceReconnect, didStartOrHaveConnection {
-                if usesRemoteDataChannel, remoteTransport?.canSendFrames == true {
-                    appendDebug("refresh panel_state timeout; remote data channel open, soft resync")
-                    await resendRemoteDataChannelSnapshotRequest(reason: "refresh panel_state timeout")
-                    _ = await loadRecoveredCatalog(reason: "refresh panel_state timeout")
-                } else {
-                    appendDebug("refresh panel_state timeout; escalating to force reconnect")
-                    refreshRequestSnapshotAfterConnect = true
-                    let forceStarted = ensureWebSocketConnected(reason: "refresh panel_state timeout", force: true)
-                    appendDebug("refresh forceReconnectAfterTimeout started=\(forceStarted)")
-                }
+                appendDebug("refresh panel_state timeout; escalating to force reconnect")
+                refreshRequestSnapshotAfterConnect = true
+                let forceStarted = ensureWebSocketConnected(reason: "refresh panel_state timeout", force: true)
+                appendDebug("refresh forceReconnectAfterTimeout started=\(forceStarted)")
             }
         } catch {
             if Self.isCancellation(error) { return }
@@ -1278,21 +1227,6 @@ final class ChatViewModel: ObservableObject {
         sendCommand(command)
     }
 
-    private func resendRemoteDataChannelSnapshotRequest(reason: String) async {
-        guard let transport = remoteTransport, transport.canSendFrames else {
-            appendDebug("refresh soft resync skipped: remote data channel not ready reason=\(reason)")
-            return
-        }
-        let resumeSessionID = focusedSessionId
-        let lastRevision = resumeSessionID.flatMap { mirror.currentRevision(for: $0) }
-        do {
-            try await transport.sendResume(sessionId: resumeSessionID, lastRevision: lastRevision)
-        } catch {
-            appendDebug("refresh soft resync resume failed: \(error.localizedDescription)")
-        }
-        sendRefreshSnapshotRequest(reason: "\(reason) soft resync")
-    }
-
     private func clearPendingProjectFocusId() {
         pendingProjectFocusTimeoutTask?.cancel()
         pendingProjectFocusTimeoutTask = nil
@@ -1380,81 +1314,31 @@ final class ChatViewModel: ObservableObject {
         } else if remoteTransport?.isConnected == true {
             appendDebug("WS connect skipped: already connected reason=\(reason)")
             return true
-        } else if connectionStatus == "连接中", activeTransportPath != nil, remoteTransport != nil, hasP2PTransportMetadata {
-            appendDebug("remote transport connect skipped: already connecting reason=\(reason)")
+        } else if connectionStatus == "连接中", remoteTransport != nil {
+            appendDebug("WS connect skipped: already connecting reason=\(reason)")
             return true
         }
-        guard config.isComplete || hasP2PTransportMetadata else { return false }
-        appendDebug("WS connect: \(reason) connection_id=\(config.connectionId.map(String.init) ?? "none")")
-        currentConnectStartedAt = Date()
-        didReportFirstPanelStateLatency = false
+        guard config.isComplete else { return false }
+        appendDebug("WS connect: \(reason) host=\(config.macHost):\(config.port)")
         connectionStatus = "连接中"
         let generation = webSocketGeneration
-        if let client = config.remoteTransport {
-            if client is RemoteWebRTCTransport {
-                didStartP2PForConnection = true
-            }
-            return startTransport(client, path: configuredTransportPath(for: client), generation: generation, reason: reason)
-        }
-        if config.supportsDirectHTTP {
-            let client = RemoteWebSocketClient(config: config)
-            return startTransport(client, path: .lan, generation: generation, reason: reason)
-        }
-        if p2pStartInProgress, hasP2PTransportMetadata {
-            appendDebug("P2P connect skipped: setup in progress reason=\(reason)")
-            return true
-        }
-        if didStartP2PForConnection, hasP2PTransportMetadata {
-            Task { @MainActor [weak self] in
-                await self?.startRemoteTransportFromMetadata(generation: generation, reason: reason)
-            }
-            return true
-        }
-        if hasP2PTransportMetadata {
-            didStartP2PForConnection = true
-            Task { @MainActor [weak self] in
-                await self?.startRemoteTransportFromMetadata(generation: generation, reason: reason)
-            }
-            return true
-        }
-        return false
-    }
-
-    private func configuredTransportPath(for client: RemoteTransport?) -> RemoteTransportPath {
-        if client is RemoteWebSocketClient { return .lan }
-        if client is RemoteTunnelTransport { return .tunnel }
-        if (config.transport ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "tunnel" {
-            return .tunnel
-        }
-        if config.supportsDirectHTTP { return .lan }
-        return .p2p
+        let client = RemoteWebSocketClient(config: config)
+        return startTransport(client, generation: generation)
     }
 
     @discardableResult
-    private func startTransport(_ client: RemoteTransport, path: RemoteTransportPath, generation: Int, reason: String) -> Bool {
-        activeTransportPath = path
+    private func startTransport(_ client: RemoteTransport, generation: Int) -> Bool {
         remoteTransport = client
-        if path == .p2p {
-            registerRelayHandler(for: client)
-        }
-        wireTransportCallbacks(client, path: path, generation: generation)
-        if client.isConnected || (path == .p2p && client.canSendFrames) {
+        wireTransportCallbacks(client, generation: generation)
+        if client.isConnected {
             client.onConnect?()
             return true
         }
         do {
             try client.connect()
         } catch {
-            appendDebug("\(path.rawValue.uppercased()) connect failed: \(error.localizedDescription)")
-            if path == .p2p, let connectionId = config.connectionId {
-                SignalingClient.shared.removeRelayHandler(connectionId: connectionId)
-            }
-            if Self.isAuthError(error) {
-                authFailureBlockingReconnect = true
-                lastError = L10n.string("鉴权失败，请检查电脑端设置面板里的连接配置是否正确。")
-            } else {
-                lastError = error.localizedDescription
-            }
+            appendDebug("WS connect failed: \(error.localizedDescription)")
+            lastError = error.localizedDescription
             refreshRequestSnapshotAfterConnect = false
             connectionStatus = "连接失败"
             return false
@@ -1462,15 +1346,13 @@ final class ChatViewModel: ObservableObject {
         return true
     }
 
-    private func wireTransportCallbacks(_ client: RemoteTransport, path: RemoteTransportPath, generation: Int) {
+    private func wireTransportCallbacks(_ client: RemoteTransport, generation: Int) {
         client.onConnect = { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, self.isActiveTransport(client, generation: generation) else { return }
                 self.connectionStatus = "已连接"
-                self.activeTransportPath = path
                 self.reconnectAttempt = 0
-                self.authFailureBlockingReconnect = false
-                _ = await self.loadRecoveredCatalog(reason: "\(path.rawValue) connect")
+                _ = await self.loadRecoveredCatalog(reason: "lan connect")
                 let resumeSessionID = self.focusedSessionId
                 if let resumeSessionID {
                     let lastRev = self.mirror.currentRevision(for: resumeSessionID)
@@ -1494,9 +1376,7 @@ final class ChatViewModel: ObservableObject {
                     }
                 }
                 self.replayPendingCommands()
-                if path == .lan || path == .p2p || path == .tunnel {
-                    self.sendRefreshSnapshotRequest(reason: "remote transport open")
-                }
+                self.sendRefreshSnapshotRequest(reason: "remote transport open")
                 if self.refreshRequestSnapshotAfterConnect {
                     self.refreshRequestSnapshotAfterConnect = false
                     self.sendRefreshSnapshotRequest(reason: "refresh reconnect")
@@ -1524,7 +1404,7 @@ final class ChatViewModel: ObservableObject {
         client.onDecodeFailure = { [weak self] preview in
             Task { @MainActor [weak self] in
                 guard let self, self.isActiveTransport(client, generation: generation) else { return }
-                self.appendDebug("\(path.rawValue.uppercased()) decode failed: \(preview)")
+                self.appendDebug("WS decode failed: \(preview)")
             }
         }
         client.onDisconnect = { [weak self] error in
@@ -1533,94 +1413,16 @@ final class ChatViewModel: ObservableObject {
                 self.connectionStatus = "未连接"
                 self.failPendingRecoveryRequests(message: L10n.string("远程连接已断开，请重新连接。"))
                 if let error {
-                    self.appendDebug("\(path.rawValue.uppercased()) disconnected: \(error.localizedDescription)")
-                    if Self.isAuthError(error) {
-                        self.authFailureBlockingReconnect = true
-                        self.lastError = L10n.string("鉴权失败，请检查电脑端设置面板里的连接配置是否正确。")
-                        return
-                    }
+                    self.appendDebug("WS disconnected: \(error.localizedDescription)")
                 }
                 self.scheduleReconnect(generation: generation)
             }
         }
     }
 
-    private func startRemoteTransportFromMetadata(generation: Int, reason: String) async {
-        guard webSocketGeneration == generation else { return }
-        guard !p2pStartInProgress else {
-            appendDebug("P2P setup skipped: already in progress reason=\(reason)")
-            return
-        }
-        p2pStartInProgress = true
-        defer { p2pStartInProgress = false }
-        guard let connectionId = config.connectionId,
-              let targetDeviceId = config.targetDeviceId else {
-            lastError = L10n.string("连接信息不完整，请重新发起连接。")
-            connectionStatus = "连接失败"
-            return
-        }
-        do {
-            try await SignalingClient.shared.waitUntilConnected(timeout: 8)
-            let path = configuredTransportPath(for: nil)
-            let transport: RemoteTransport
-            if path == .tunnel {
-                transport = RemoteTunnelTransport(
-                    connectionId: connectionId,
-                    targetDeviceId: targetDeviceId,
-                    signalingClient: SignalingClient.shared
-                )
-            } else {
-                guard let accessToken = config.remoteAccessToken else {
-                    lastError = L10n.string("连接信息不完整，请重新发起连接。")
-                    connectionStatus = "连接失败"
-                    return
-                }
-                let client = RemoteDeviceClient(api: RemoteAPIClient(baseURL: config.remoteAPIBaseURL ?? RemoteAPIConfig.baseURL))
-                let ice = try await client.iceServers(connectionId: connectionId, accessToken: accessToken)
-                let icePolicy = RemoteICEPolicy.summary(from: ice.iceServers)
-                let iceServers = usableICEServers(from: ice.iceServers)
-                appendDebug("P2P ice \(icePolicy.logDescription) connection_id=\(connectionId)")
-                transport = RemoteWebRTCTransport(
-                    connectionId: connectionId,
-                    targetDeviceId: targetDeviceId,
-                    role: .offerer,
-                    signalingClient: SignalingClient.shared,
-                    iceServers: iceServers
-                )
-            }
-            guard webSocketGeneration == generation else {
-                transport.disconnect()
-                return
-            }
-            _ = startTransport(transport, path: path, generation: generation, reason: reason)
-        } catch {
-            if Self.isCancellation(error) { return }
-            appendDebug("remote transport setup failed: \(error.localizedDescription)")
-            lastError = error.localizedDescription
-            connectionStatus = "连接失败"
-        }
-    }
-
-    private func registerRelayHandler(for transport: RemoteTransport) {
-        guard let connectionId = config.connectionId,
-              let webRTCTransport = transport as? RemoteWebRTCTransport else { return }
-        SignalingClient.shared.setRelayHandler(connectionId: connectionId) { [weak webRTCTransport] event in
-            guard let payload = event.payload else { return }
-            webRTCTransport?.receiveRelayPayload(payload)
-        }
-    }
-
-    private func usableICEServers(from servers: [RemoteICEServer]) -> [RemoteICEServer] {
-        RemoteICEPolicy.relayCapableServers(from: servers)
-    }
-
     private func disconnectCurrentTransport() {
-        if activeTransportPath == .p2p, let connectionId = config.connectionId {
-            SignalingClient.shared.removeRelayHandler(connectionId: connectionId)
-        }
         remoteTransport?.disconnect()
         remoteTransport = nil
-        activeTransportPath = nil
         failPendingRecoveryRequests(message: L10n.string("远程连接已断开，请重新连接。"))
     }
 
@@ -1637,12 +1439,6 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func scheduleReconnect(generation: Int) {
-        // Audit A-P1: token error -> stop auto reconnect to avoid an infinite
-        // 401 loop. The user must re-enter the token in Settings to retry.
-        if authFailureBlockingReconnect {
-            appendDebug("WS auto-reconnect skipped (auth failure latched).")
-            return
-        }
         // Audit A-P1: exponential backoff 1s → 2s → 4s → 8s → 16s → 30s cap.
         let attempt = reconnectAttempt
         reconnectAttempt = min(attempt + 1, 5)
@@ -1664,7 +1460,6 @@ final class ChatViewModel: ObservableObject {
 
     private func handleEnvelope(_ envelope: PanelStateEnvelope) {
         panelStateEnvelopeSequence &+= 1
-        reportFirstPanelStateLatencyIfNeeded()
         switch envelope.kind {
         case .snapshot:
             guard let snapshot = envelope.snapshot else { return }
@@ -1895,35 +1690,6 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    private func reportFirstPanelStateLatencyIfNeeded() {
-        guard !didReportFirstPanelStateLatency,
-              let connectionId = config.connectionId,
-              let accessToken = config.remoteAccessToken,
-              let startedAt = currentConnectStartedAt else { return }
-        didReportFirstPanelStateLatency = true
-        let latencyMS = max(0, Int(Date().timeIntervalSince(startedAt) * 1_000))
-        let path = activeTransportPath?.rawValue ?? config.transport ?? "unknown"
-        appendDebug("remote first_panel_state latency_ms=\(latencyMS) connection_id=\(connectionId) path=\(path)")
-        Task {
-            do {
-                let client = RemoteDeviceClient(api: RemoteAPIClient(baseURL: config.remoteAPIBaseURL ?? RemoteAPIConfig.baseURL))
-                _ = try await client.reportConnectionMetrics(
-                    connectionId: connectionId,
-                    request: RemoteConnectionMetricsRequest(
-                        transport: path,
-                        firstPacketLatencyMs: latencyMS,
-                        stage: "first_panel_state",
-                        path: path
-                    ),
-                    accessToken: accessToken
-                )
-                await MainActor.run { self.appendDebug("remote metrics reported connection_id=\(connectionId)") }
-            } catch {
-                await MainActor.run { self.appendDebug("remote metrics report failed connection_id=\(connectionId): \(error.localizedDescription)") }
-            }
-        }
-    }
-
     // MARK: - Helpers
 
     private func makeHTTPClient() -> RemoteHTTPClient {
@@ -1934,41 +1700,10 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    /// Audit A-P1: classify a WS disconnect error as an authentication
-    /// failure. URLSessionWebSocketTask doesn't surface HTTP 401 cleanly;
-    /// it usually arrives as URLError.userAuthenticationRequired but on
-    /// older systems it can be wrapped with a 401 marker in the message.
-    private static func isAuthError(_ error: Error) -> Bool {
-        if let urlError = error as? URLError {
-            switch urlError.code {
-            case .userAuthenticationRequired:
-                return true
-            default:
-                break
-            }
-        }
-        let nsError = error as NSError
-        let description = nsError.localizedDescription.lowercased()
-        if description.contains("401") || description.contains("unauthorized") {
-            return true
-        }
-        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorUserAuthenticationRequired {
-            return true
-        }
-        return false
-    }
-
     private func appendDebug(_ line: String) {
 #if DEBUG
         print("[CodevokeRemote] \(line)")
 #endif
-    }
-
-    private func maskedToken(_ token: String) -> String {
-        guard token.count > 8 else { return String(repeating: "*", count: token.count) }
-        let prefix = token.prefix(4)
-        let suffix = token.suffix(4)
-        return "\(prefix)…\(suffix)"
     }
 
     private static func isCancellation(_ error: Error) -> Bool {

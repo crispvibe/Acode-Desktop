@@ -2,12 +2,10 @@ import SwiftUI
 import UIKit
 
 struct RootView: View {
-    @ObservedObject var authViewModel: AuthViewModel
     @StateObject private var viewModel: ChatViewModel
     @State private var sidebarDragOffset: CGFloat = 0
 
-    init(authViewModel: AuthViewModel, initialConfig: RemoteChatConfig? = nil) {
-        self.authViewModel = authViewModel
+    init(initialConfig: RemoteChatConfig? = nil) {
         _viewModel = StateObject(wrappedValue: ChatViewModel(initialConfig: initialConfig))
     }
 
@@ -82,7 +80,6 @@ struct RootView: View {
                 if viewModel.isSettingsPresented {
                     SettingsView(
                         chatViewModel: viewModel,
-                        authViewModel: authViewModel,
                         close: {
                             viewModel.isSettingsPresented = false
                         }
@@ -193,5 +190,5 @@ struct RootView: View {
 }
 
 #Preview {
-    RootView(authViewModel: AuthViewModel())
+    RootView()
 }

@@ -96,7 +96,6 @@ final class RemoteWebSocketClient: RemoteTransport {
         let epoch = bumpEpoch()
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
-        request.setValue("Bearer \(config.token)", forHTTPHeaderField: "Authorization")
         let task = session.webSocketTask(with: request)
         self.task = task
         task.resume()

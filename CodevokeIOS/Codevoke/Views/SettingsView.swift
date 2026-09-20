@@ -2,39 +2,31 @@ import SwiftUI
 import UIKit
 
 private struct SettingsHomeSnapshot: Equatable {
-    var accountSubtitle: String
     var connectionStatus: String
     var selectedCLI: String
 
     @MainActor
-    init(chatViewModel: ChatViewModel, authViewModel: AuthViewModel) {
-        accountSubtitle = authViewModel.currentSession?.user.displayAccount ?? L10n.string("已登录")
+    init(chatViewModel: ChatViewModel) {
         connectionStatus = chatViewModel.effectiveConnectionStatus
         selectedCLI = chatViewModel.selectedCLI
     }
 }
 
 private enum SettingsRoute: Hashable {
-    case account
-    case legal
     case connection
     case cli
-    case accountDeletion
-    case appUpdate
 }
 
 struct SettingsView: View {
     let chatViewModel: ChatViewModel
-    @ObservedObject var authViewModel: AuthViewModel
     let close: () -> Void
     @State private var navigationPath: [SettingsRoute] = []
     @State private var homeSnapshot: SettingsHomeSnapshot
 
-    init(chatViewModel: ChatViewModel, authViewModel: AuthViewModel, close: @escaping () -> Void) {
+    init(chatViewModel: ChatViewModel, close: @escaping () -> Void) {
         self.chatViewModel = chatViewModel
-        self._authViewModel = ObservedObject(wrappedValue: authViewModel)
         self.close = close
-        _homeSnapshot = State(initialValue: SettingsHomeSnapshot(chatViewModel: chatViewModel, authViewModel: authViewModel))
+        _homeSnapshot = State(initialValue: SettingsHomeSnapshot(chatViewModel: chatViewModel))
     }
 
     var body: some View {
@@ -44,22 +36,6 @@ struct SettingsView: View {
                     .ignoresSafeArea()
                 ScrollView {
                     LazyVStack(spacing: 16) {
-                        SettingsSectionCard {
-                            VStack(spacing: 0) {
-                                NavigationLink(value: SettingsRoute.account) {
-                                    SettingsMenuRow(
-                                        title: "账号与安全",
-                                        subtitle: homeSnapshot.accountSubtitle,
-                                        icon: "person.crop.circle"
-                                    )
-                                }
-                                SettingsDivider()
-                                NavigationLink(value: SettingsRoute.legal) {
-                                    SettingsMenuRow(title: "协议与隐私", subtitle: "用户协议、隐私政策", icon: "doc.text")
-                                }
-                            }
-                        }
-
                         SettingsSectionCard {
                             VStack(spacing: 0) {
                                 NavigationLink(value: SettingsRoute.connection) {
@@ -74,16 +50,9 @@ struct SettingsView: View {
 
                         SettingsSectionCard {
                             VStack(spacing: 0) {
-                                NavigationLink(value: SettingsRoute.appUpdate) {
-                                    SettingsMenuRow(title: "在线更新", subtitle: appVersionText, icon: "arrow.down.circle")
-                                }
-                                SettingsDivider()
                                 SettingsMenuRow(title: "关于 Codevoke", subtitle: appVersionText, icon: "info.circle", showsChevron: false)
                             }
                         }
-
-                        AppFooterView(footer: authViewModel.appFooter)
-                            .padding(.top, 4)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
@@ -93,9 +62,6 @@ struct SettingsView: View {
             .navigationTitle(L10n.key("设置"))
             .navigationBarTitleDisplayMode(.inline)
             .onAppear(perform: refreshHomeSnapshot)
-            .task {
-                await authViewModel.loadAppFooterIfNeeded()
-            }
             .navigationDestination(for: SettingsRoute.self) { route in
                 destination(for: route)
             }
@@ -111,14 +77,10 @@ struct SettingsView: View {
                 }
             }
         }
-        .sheet(item: legalDocumentBinding) { document in
-            LegalDocumentSheet(document: document)
-                .codevokePresentationCornerRadius(28)
-        }
     }
 
     private func refreshHomeSnapshot() {
-        let snapshot = SettingsHomeSnapshot(chatViewModel: chatViewModel, authViewModel: authViewModel)
+        let snapshot = SettingsHomeSnapshot(chatViewModel: chatViewModel)
         if homeSnapshot != snapshot {
             homeSnapshot = snapshot
         }
@@ -127,34 +89,11 @@ struct SettingsView: View {
     @ViewBuilder
     private func destination(for route: SettingsRoute) -> some View {
         switch route {
-        case .account:
-            SettingsAccountPage(authViewModel: authViewModel)
-        case .legal:
-            SettingsLegalPage(authViewModel: authViewModel)
         case .connection:
-            SettingsConnectionPage(viewModel: chatViewModel, authViewModel: authViewModel, close: close)
+            SettingsConnectionPage(viewModel: chatViewModel, close: close)
         case .cli:
             SettingsCLIPage(viewModel: chatViewModel)
-        case .accountDeletion:
-            AccountDeletionPage(authViewModel: authViewModel) {
-                if !navigationPath.isEmpty {
-                    navigationPath.removeLast()
-                }
-            }
-        case .appUpdate:
-            SettingsAppUpdatePage()
         }
-    }
-
-    private var legalDocumentBinding: Binding<RemoteLegalDocument?> {
-        Binding(
-            get: { authViewModel.selectedLegalDocument },
-            set: { value in
-                if value == nil {
-                    authViewModel.dismissLegalDocument()
-                }
-            }
-        )
     }
 
     private var appVersionText: String {
@@ -162,87 +101,6 @@ struct SettingsView: View {
         let version = info?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = info?["CFBundleVersion"] as? String ?? "1"
         return L10n.format("版本 %@ (%@)", version, build)
-    }
-}
-
-private struct SettingsAppUpdatePage: View {
-    @State private var message = ""
-    @State private var updateURL: URL?
-    @State private var isChecking = false
-    private let client = RemoteLegalClient()
-
-    private var version: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-    }
-
-    private var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-    }
-
-    var body: some View {
-        SettingsPageContainer(title: "在线更新") {
-            SettingsSectionCard {
-                VStack(alignment: .leading, spacing: 14) {
-                    SettingsCardTitle("当前版本", subtitle: L10n.format("版本 %@ (%@)", version, buildNumber))
-                    if !message.isEmpty {
-                        Text(message)
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color.codevokeMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    HStack(spacing: 10) {
-                        Button {
-                            Task { await checkForUpdate() }
-                        } label: {
-                            Text(L10n.key(isChecking ? "检查中..." : "检查更新"))
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.codevokeInk, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                        .buttonStyle(.codevokePress)
-                        .disabled(isChecking)
-                        if let updateURL {
-                            Button {
-                                UIApplication.shared.open(updateURL)
-                            } label: {
-                                Text(L10n.key("前往商店"))
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(Color.codevokeInk)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.codevokeHairline, lineWidth: 1))
-                            }
-                            .buttonStyle(.codevokePress)
-                        }
-                    }
-                }
-                .padding(16)
-            }
-        }
-    }
-
-    @MainActor
-    private func checkForUpdate() async {
-        isChecking = true
-        updateURL = nil
-        message = L10n.string("正在检查更新...")
-        do {
-            let result = try await client.checkAppUpdate(version: version, buildNumber: buildNumber)
-            if result.updateAvailable {
-                updateURL = URL(string: result.appStoreUrl.isEmpty ? result.downloadUrl : result.appStoreUrl)
-                let buildText = result.latestBuildNumber.isEmpty ? "" : " (\(result.latestBuildNumber))"
-                let forceText = result.forceUpdate ? L10n.string("，这是强制更新") : ""
-                message = L10n.format("发现新版 %@%@%@。%@", result.latestVersion, buildText, forceText, result.releaseNotes)
-            } else {
-                message = L10n.string("当前已是最新版本。")
-            }
-        } catch {
-            message = error.localizedDescription
-        }
-        isChecking = false
     }
 }
 
@@ -266,196 +124,36 @@ private struct SettingsCloseButtonLabel: View {
     }
 }
 
-private struct SettingsAccountPage: View {
-    @ObservedObject var authViewModel: AuthViewModel
-
-    var body: some View {
-        SettingsPageContainer(title: "账号与安全") {
-            SettingsSectionCard {
-                VStack(alignment: .leading, spacing: 14) {
-                    SettingsCardTitle("当前账号", subtitle: "Codevoke 远程账号")
-                    HStack(spacing: 12) {
-                        Image(systemName: "person.crop.circle.fill")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(Color.codevokeInk)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(authViewModel.currentSession?.user.displayAccount ?? L10n.string("已登录"))
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(Color.codevokeInk)
-                            Text(L10n.key("状态正常"))
-                                .font(.system(size: 12))
-                                .foregroundStyle(Color.codevokeMuted)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                }
-                .padding(16)
-            }
-
-            SettingsSectionCard {
-                VStack(spacing: 0) {
-                    Button {
-                        Task { await authViewModel.clearSession() }
-                    } label: {
-                        SettingsActionRow(title: "退出登录", subtitle: "清除本机登录状态", icon: "rectangle.portrait.and.arrow.right", tint: .red.opacity(0.85))
-                    }
-                    .buttonStyle(.plain)
-                    SettingsDivider()
-                    NavigationLink(value: SettingsRoute.accountDeletion) {
-                        SettingsActionRow(title: "注销账号", subtitle: "删除账号与远程服务数据", icon: "trash", tint: .red)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            SettingsMessageView(message: authViewModel.accountDeletionMessage)
-        }
-    }
-}
-
-private struct AccountDeletionPage: View {
-    @ObservedObject var authViewModel: AuthViewModel
-    let close: () -> Void
-    @State private var confirmAccount = ""
-    @State private var confirmDestroy = ""
-    @State private var confirmWaiveRights = ""
-    @State private var reason = ""
-
-    private let requiredAccount = "我确认注销账号"
-    private let requiredDestroy = "确认销毁"
-    private let requiredCleanup = "确认清理远程连接数据"
-
-    var body: some View {
-        ZStack {
-            WhiteGlassBackground()
-                .ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    SettingsSectionCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            SettingsCardTitle("注销账号", subtitle: "注销成功后账号不可恢复")
-                            deletionBullet("远程账号、登录令牌、设备、连接授权、协议确认和服务状态主数据会被删除。")
-                            deletionBullet("后台仅保留脱敏注销记录，以及注销前设备与连接状态快照用于审计与争议处理。")
-                        }
-                        .padding(16)
-                    }
-
-                    SettingsSectionCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            SettingsTextField(L10n.format("输入：%@", localizedRequiredAccount), text: $confirmAccount, placeholder: requiredAccount)
-                            SettingsTextField(L10n.format("输入：%@", localizedRequiredDestroy), text: $confirmDestroy, placeholder: requiredDestroy)
-                            SettingsTextField(L10n.format("输入：%@", localizedRequiredCleanup), text: $confirmWaiveRights, placeholder: requiredCleanup)
-                            SettingsTextField("注销原因", text: $reason, placeholder: "选填")
-                            SettingsMessageView(message: authViewModel.accountDeletionMessage)
-                            Button {
-                                Task {
-                                    let ok = await authViewModel.requestAccountDeletion(
-                                        confirmAccount: requiredAccount,
-                                        confirmDestroy: requiredDestroy,
-                                        confirmWaiveRights: requiredCleanup,
-                                        reason: reason
-                                    )
-                                    if ok { close() }
-                                }
-                            } label: {
-                                HStack(spacing: 8) {
-                                    if authViewModel.accountDeletionSubmitting {
-                                        ProgressView()
-                                            .controlSize(.mini)
-                                    } else {
-                                        Image(systemName: "trash")
-                                    }
-                                    Text(L10n.key(authViewModel.accountDeletionSubmitting ? "注销中" : "确认注销账号"))
-                                }
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 13)
-                                .background(Color.red, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                            }
-                            .buttonStyle(.codevokePress)
-                            .disabled(!canSubmit || authViewModel.accountDeletionSubmitting)
-                        }
-                        .padding(16)
-                    }
-                }
-                .padding(16)
-                .padding(.bottom, 20)
-            }
-            .scrollDismissesKeyboard(.interactively)
-        }
-        .navigationTitle(L10n.key("注销账号"))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .codevokeTopBarLeading) {
-                Button(L10n.string("取消")) { close() }
-                    .foregroundStyle(Color.codevokeInk)
-            }
-        }
-    }
-
-    private var canSubmit: Bool {
-        confirmationMatches(confirmAccount, canonical: requiredAccount) &&
-            confirmationMatches(confirmDestroy, canonical: requiredDestroy) &&
-            confirmationMatches(confirmWaiveRights, canonical: requiredCleanup)
-    }
-
-    private var localizedRequiredAccount: String { L10n.string(requiredAccount) }
-    private var localizedRequiredDestroy: String { L10n.string(requiredDestroy) }
-    private var localizedRequiredCleanup: String { L10n.string(requiredCleanup) }
-
-    private func confirmationMatches(_ value: String, canonical: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed == canonical || trimmed == L10n.string(canonical)
-    }
-
-    private func deletionBullet(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.red.opacity(0.78))
-                .padding(.top, 2)
-            Text(L10n.key(text))
-                .font(.system(size: 12))
-                .foregroundStyle(Color.codevokeMuted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
 private struct SettingsConnectionPage: View {
     @ObservedObject var viewModel: ChatViewModel
-    @ObservedObject var authViewModel: AuthViewModel
-    @StateObject private var connectViewModel = DeviceConnectViewModel()
-    @State private var mode: RemoteConnectionMode = .devices
     let close: () -> Void
+    @StateObject private var listViewModel = DeviceListViewModel()
+    @StateObject private var connectViewModel = DeviceConnectViewModel()
+    @State private var hostInput = ""
+    @State private var portInput = ""
 
     var body: some View {
         SettingsPageContainer(title: "远程设备") {
             connectionHeader
-            RemoteConnectionModePicker(selection: $mode)
-            if mode == .devices {
-                devicesCard
-                codeEntryShortcut
-            } else {
-                deviceCodeCard
-                resolvedDeviceCard
-            }
-            connectionStatusCard
+            manualCard
+            discoveredCard
+            statusCard
+        }
+        .onAppear {
+            hostInput = viewModel.config.macHost
+            portInput = String(viewModel.config.port)
         }
         .task {
-            if authViewModel.remoteDevices.isEmpty {
-                await authViewModel.loadRemoteDevices()
-            }
+            await listViewModel.scan(preferredHost: viewModel.config.macHost)
         }
     }
 
     private var connectionHeader: some View {
         VStack(alignment: .leading, spacing: 7) {
-                Text(L10n.key(mode == .devices ? "选择电脑" : "输入设备码"))
+            Text(L10n.key("连接电脑"))
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(Color.codevokeInk)
-            Text(L10n.key(mode == .devices ? "连接已登录账号的远程设备，或输入设备码。" : "设备码在电脑端远程账号卡片中查看。"))
+            Text(L10n.key("同一 Wi‑Fi 下的局域网直连，无需账号。"))
                 .font(.system(size: 13))
                 .foregroundStyle(Color.codevokeMuted)
         }
@@ -464,14 +162,37 @@ private struct SettingsConnectionPage: View {
         .padding(.top, 2)
     }
 
-    private var devicesCard: some View {
+    private var manualCard: some View {
         SettingsSectionCard {
             VStack(alignment: .leading, spacing: 14) {
+                SettingsCardTitle("连接地址", subtitle: "电脑的局域网 IP 与端口")
+                SettingsTextField("地址", text: $hostInput, placeholder: "192.168.1.10")
+                SettingsTextField("端口", text: $portInput, placeholder: "\(DeviceConnectViewModel.defaultPort)")
+                Button {
+                    Task { await apply(host: hostInput, port: resolvedPort) }
+                } label: {
+                    Text(L10n.key(connectViewModel.isConnecting ? "连接中…" : "保存并连接"))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(Color.black, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(.codevokePress)
+                .disabled(connectViewModel.isConnecting || hostInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(16)
+        }
+    }
+
+    private var discoveredCard: some View {
+        SettingsSectionCard {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
-                    SettingsCardTitle("我的设备", subtitle: "来自当前账号的电脑")
+                    SettingsCardTitle("局域网设备", subtitle: "自动扫描当前 Wi‑Fi 网段")
                     Spacer(minLength: 0)
-                    Button(L10n.string(authViewModel.remoteDevicesLoading ? "刷新中…" : "刷新")) {
-                        Task { await authViewModel.loadRemoteDevices() }
+                    Button(L10n.string(listViewModel.isScanning ? "扫描中…" : "重新扫描")) {
+                        Task { await listViewModel.scan(preferredHost: viewModel.config.macHost) }
                     }
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.codevokeInk)
@@ -480,17 +201,17 @@ private struct SettingsConnectionPage: View {
                     .background(.white.opacity(0.72), in: Capsule())
                     .overlay(Capsule().stroke(Color.black.opacity(0.06), lineWidth: 1))
                     .buttonStyle(.codevokePress)
-                    .disabled(authViewModel.remoteDevicesLoading)
+                    .disabled(listViewModel.isScanning)
                 }
 
-                if authViewModel.remoteDevicesLoading && authViewModel.remoteDevices.isEmpty {
-                    SettingsEmptyRow(icon: "desktopcomputer", text: "正在加载远程设备…")
-                } else if authViewModel.remoteDevices.isEmpty {
-                    SettingsEmptyRow(icon: "desktopcomputer", text: "还没有远程设备。请先在电脑端登录并启用远程连接。")
+                if listViewModel.isScanning && listViewModel.hosts.isEmpty {
+                    SettingsEmptyRow(icon: "desktopcomputer", text: "正在扫描局域网…")
+                } else if listViewModel.hosts.isEmpty {
+                    SettingsEmptyRow(icon: "desktopcomputer", text: "没有发现设备，请确认电脑端已开启设备连接服务。")
                 } else {
                     VStack(spacing: 10) {
-                        ForEach(authViewModel.remoteDevices) { device in
-                            remoteDeviceRow(device)
+                        ForEach(listViewModel.hosts, id: \.self) { host in
+                            lanHostRow(host)
                         }
                     }
                 }
@@ -499,135 +220,29 @@ private struct SettingsConnectionPage: View {
         }
     }
 
-    private var codeEntryShortcut: some View {
-        Button {
-            mode = .code
-        } label: {
-            SettingsSectionCard {
-                HStack(spacing: 12) {
-                    Image(systemName: "number.square")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Color.codevokeInk)
-                        .frame(width: 42, height: 42)
-                        .background(Color.codevokeSoft, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.key("输入设备码"))
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.codevokeInk)
-                        Text(L10n.key("用电脑端显示的固定设备码连接"))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.codevokeMuted)
-                    }
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.codevokeMuted.opacity(0.6))
-                }
-                .padding(16)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var deviceCodeCard: some View {
-        SettingsSectionCard {
-            VStack(alignment: .leading, spacing: 14) {
-                SettingsCardTitle("固定设备码", subtitle: "支持已登录账号的桌面设备")
-                SettingsTextField("设备码", text: $connectViewModel.deviceCode, placeholder: "ABCD-EFGH-12")
-                HStack(spacing: 10) {
-                    Button(L10n.string(connectViewModel.isResolvingCode ? "查找中…" : "查找设备")) {
-                        Task { await connectViewModel.resolveDeviceCode(session: authViewModel.currentSession) }
-                    }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.codevokeInk)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.black.opacity(0.06), lineWidth: 1))
-                    .buttonStyle(.codevokePress)
-                    .disabled(connectViewModel.isResolvingCode)
-
-                    Button(L10n.string(connectViewModel.isConnecting ? "连接中…" : "连接")) {
-                        if let resolved = connectViewModel.resolvedDevice {
-                            Task { await connect(deviceId: resolved.deviceId) }
-                        }
-                    }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .background(Color.black, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .buttonStyle(.codevokePress)
-                    .disabled(connectViewModel.resolvedDevice == nil || connectViewModel.isConnecting)
-                }
-                Text(L10n.key("解析成功后显示设备名称和确认状态。"))
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.codevokeMuted)
-            }
-            .padding(16)
-        }
-    }
-
-    @ViewBuilder
-    private var resolvedDeviceCard: some View {
-        if let resolved = connectViewModel.resolvedDevice {
-            SettingsSectionCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 12) {
-                        RemoteDeviceIcon(platform: resolved.platform)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(resolved.deviceName)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.codevokeInk)
-                            Text("\(platformName(resolved.platform)) · \(L10n.string(resolved.requiresConfirm ? "需要电脑端确认" : "可直接连接"))")
-                                .font(.system(size: 12))
-                                .foregroundStyle(Color.codevokeMuted)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    Divider().opacity(0.32)
-                    Text(L10n.key("等待确认时保留在本页，不跳转、不遮挡主聊天页。"))
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.codevokeMuted)
-                    Button {
-                        Task { await connect(deviceId: resolved.deviceId) }
-                    } label: {
-                        Text(L10n.key(connectViewModel.isConnecting ? "连接中…" : "连接这台电脑"))
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color.black, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    }
-                    .buttonStyle(.codevokePress)
-                    .disabled(connectViewModel.isConnecting)
-                }
-                .padding(16)
-            }
-        }
-    }
-
-    private func remoteDeviceRow(_ device: RemoteDevice) -> some View {
+    private func lanHostRow(_ host: String) -> some View {
         HStack(spacing: 12) {
-            RemoteDeviceIcon(platform: device.platform, enabled: device.remoteEnabled && device.status == "active")
+            Image(systemName: "desktopcomputer")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.codevokeInk)
+                .frame(width: 38, height: 38)
+                .background(Color.codevokeSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(device.online ? Color.green : Color.codevokeMuted.opacity(0.38))
+                        .fill(Color.green)
                         .frame(width: 7, height: 7)
-                    Text(device.deviceName)
+                    Text(host)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.codevokeInk)
-                        .lineLimit(2)
                 }
-                Text(deviceSubtitle(device))
+                Text(L10n.key("局域网可连接"))
                     .font(.system(size: 12))
                     .foregroundStyle(Color.codevokeMuted)
-                    .lineLimit(2)
             }
             Spacer(minLength: 0)
             Button(L10n.string(connectViewModel.isConnecting ? "连接中…" : "连接")) {
-                Task { await connect(deviceId: device.id) }
+                Task { await apply(host: host, port: listViewModel.port) }
             }
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.white)
@@ -637,35 +252,23 @@ private struct SettingsConnectionPage: View {
             .frame(minHeight: 44)
             .contentShape(Rectangle())
             .buttonStyle(.codevokePress)
-            .disabled(connectViewModel.isConnecting || !device.remoteEnabled || device.status != "active")
+            .disabled(connectViewModel.isConnecting)
             .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.white.opacity(device.remoteEnabled ? 0.62 : 0.36), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(.white.opacity(0.62), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.black.opacity(0.045), lineWidth: 1))
     }
 
     @ViewBuilder
-    private var connectionStatusCard: some View {
-        let diagnostics = RemoteUserFacingText.diagnostics(
-            connectionId: connectViewModel.latestConnectionId,
-            transport: connectViewModel.latestTransport,
-            reason: connectViewModel.latestReason
-        )
-        if connectViewModel.message != nil || diagnostics != nil {
+    private var statusCard: some View {
+        if let message = connectViewModel.message ?? listViewModel.message {
             SettingsSectionCard {
                 VStack(alignment: .leading, spacing: 6) {
-                    if let message = connectViewModel.message {
-                        Text(message)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(message.contains("失败") || message.contains("超时") ? .red.opacity(0.85) : Color.codevokeMuted)
-                    }
-                    if let diagnostics {
-                        Text(diagnostics)
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.codevokeMuted)
-                    }
+                    Text(message)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(message.contains("失败") || message.contains("超时") || message.contains("没有") ? .red.opacity(0.85) : Color.codevokeMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
@@ -673,85 +276,18 @@ private struct SettingsConnectionPage: View {
         }
     }
 
-    private func connect(deviceId: Int) async {
-        guard let config = await connectViewModel.connect(deviceId: deviceId, session: authViewModel.currentSession) else { return }
+    private var resolvedPort: Int {
+        Int(portInput.trimmingCharacters(in: .whitespacesAndNewlines)) ?? DeviceConnectViewModel.defaultPort
+    }
+
+    private func apply(host: String, port: Int) async {
+        guard let config = await connectViewModel.connect(host: host, port: port) else { return }
         viewModel.config = config
         viewModel.saveConnectionConfig()
         close()
     }
-
-    private func deviceSubtitle(_ device: RemoteDevice) -> String {
-        platformName(device.platform)
-    }
-
-    private func platformName(_ raw: String?) -> String {
-        switch raw?.lowercased() {
-        case "macos": "macOS"
-        case "windows": "Windows"
-        case "linux": "Linux"
-        case let value? where !value.isEmpty: value
-        default: L10n.string("电脑")
-        }
-    }
 }
 
-private enum RemoteConnectionMode: String, CaseIterable {
-    case devices
-    case code
-
-    var title: String {
-        switch self {
-        case .devices: L10n.string("我的设备")
-        case .code: L10n.string("设备码")
-        }
-    }
-}
-
-private struct RemoteConnectionModePicker: View {
-    @Binding var selection: RemoteConnectionMode
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(RemoteConnectionMode.allCases, id: \.self) { mode in
-                Button {
-                    selection = mode
-                } label: {
-                    Text(mode.title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(selection == mode ? .white : Color.codevokeMuted)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(selection == mode ? Color.black : .clear, in: Capsule())
-                }
-                .buttonStyle(.codevokePress)
-            }
-        }
-        .padding(5)
-        .background(.white.opacity(0.68), in: Capsule())
-        .overlay(Capsule().stroke(Color.black.opacity(0.06), lineWidth: 1))
-    }
-}
-
-private struct RemoteDeviceIcon: View {
-    let platform: String?
-    var enabled = true
-
-    var body: some View {
-        Image(systemName: iconName)
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(enabled ? Color.codevokeInk : Color.codevokeMuted.opacity(0.48))
-            .frame(width: 38, height: 38)
-            .background(Color.codevokeSoft.opacity(enabled ? 1 : 0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    private var iconName: String {
-        switch platform?.lowercased() {
-        case "windows": "pc"
-        case "linux": "terminal"
-        default: "desktopcomputer"
-        }
-    }
-}
 
 private struct SettingsCLIPage: View {
     @ObservedObject var viewModel: ChatViewModel
@@ -807,34 +343,6 @@ private struct SettingsCLIPage: View {
                 }
                 .padding(16)
             }
-        }
-    }
-}
-
-private struct SettingsLegalPage: View {
-    @ObservedObject var authViewModel: AuthViewModel
-
-    var body: some View {
-        SettingsPageContainer(title: "协议与隐私") {
-            SettingsSectionCard {
-                VStack(spacing: 0) {
-                    ForEach(RemoteLegalDocumentType.allCases, id: \.self) { type in
-                        Button {
-                            authViewModel.presentLegalDocument(type)
-                        } label: {
-                            SettingsActionRow(title: type.title, subtitle: authViewModel.legalDocuments[type]?.version ?? L10n.string("点击查看"), icon: "doc.text")
-                        }
-                        .buttonStyle(.plain)
-                        if type != RemoteLegalDocumentType.allCases.last {
-                            SettingsDivider()
-                        }
-                    }
-                }
-            }
-            SettingsMessageView(message: authViewModel.documentMessage)
-        }
-        .task {
-            await authViewModel.loadLegalDocumentsIfNeeded()
         }
     }
 }

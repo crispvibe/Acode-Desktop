@@ -1,15 +1,18 @@
 import SwiftUI
 
+/// Entry screen: scans the local network for Codevoke hosts and connects
+/// directly — no account, pairing, or approval step.
 struct DeviceListView: View {
-    @ObservedObject var authViewModel: AuthViewModel
     @StateObject private var listViewModel = DeviceListViewModel()
     @StateObject private var connectViewModel = DeviceConnectViewModel()
     @State private var chatConfig: RemoteChatConfig?
+    @State private var manualHost = ""
+    @State private var manualPort = ""
 
     var body: some View {
         Group {
-            if chatConfig != nil {
-                RootView(authViewModel: authViewModel, initialConfig: chatConfig)
+            if let chatConfig {
+                RootView(initialConfig: chatConfig)
             } else {
                 NavigationStack {
                     ZStack {
@@ -18,8 +21,8 @@ struct DeviceListView: View {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 18) {
                                 header
-                                deviceSection
-                                codeEntryLink
+                                discoveredSection
+                                manualSection
                             }
                             .padding(.horizontal, 18)
                             .padding(.vertical, 22)
@@ -29,7 +32,7 @@ struct DeviceListView: View {
                     .toolbar {
                         ToolbarItem(placement: .codevokeTopBarTrailing) {
                             Button {
-                                Task { await listViewModel.load(session: authViewModel.currentSession) }
+                                Task { await rescan() }
                             } label: {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.system(size: 18, weight: .semibold))
@@ -40,14 +43,11 @@ struct DeviceListView: View {
                                     .shadow(color: .black.opacity(0.06), radius: 14, x: 0, y: 7)
                             }
                             .buttonStyle(.codevokePress)
-                            .disabled(listViewModel.isLoading)
+                            .disabled(listViewModel.isScanning)
                         }
                     }
-                    .onAppear {
-                        listViewModel.startPresenceUpdates(session: authViewModel.currentSession)
-                    }
-                    .onDisappear {
-                        listViewModel.stopPresenceUpdates()
+                    .task {
+                        await rescan()
                     }
                 }
             }
@@ -59,26 +59,31 @@ struct DeviceListView: View {
             Text(L10n.key("选择电脑"))
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(Color.codevokeInk)
-            Text(L10n.key("优先局域网直连，跨网时走 P2P 或公网端口映射。"))
+            Text(L10n.key("同一 Wi‑Fi 下自动发现运行 Codevoke 的电脑，点击即连。"))
                 .font(.system(size: 14))
                 .foregroundStyle(Color.codevokeMuted)
         }
     }
 
-    private var deviceSection: some View {
+    private var discoveredSection: some View {
         SettingsSectionCard {
             VStack(alignment: .leading, spacing: 12) {
-                SettingsCardTitle("我的设备", subtitle: "来自当前账号的桌面设备")
-                if listViewModel.isLoading {
-                    ProgressView()
-                        .tint(.black)
-                } else if listViewModel.devices.isEmpty {
-                    Text(L10n.key("还没有远程设备。请先在电脑端登录并注册设备。"))
+                SettingsCardTitle("局域网设备", subtitle: "自动扫描当前 Wi‑Fi 网段")
+                if listViewModel.isScanning && listViewModel.hosts.isEmpty {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .tint(.black)
+                        Text(L10n.key("正在扫描局域网…"))
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.codevokeMuted)
+                    }
+                } else if listViewModel.hosts.isEmpty {
+                    Text(L10n.key("没有发现设备。请确认电脑端已开启「设备连接服务」。"))
                         .font(.system(size: 13))
                         .foregroundStyle(Color.codevokeMuted)
                 } else {
-                    ForEach(listViewModel.devices) { device in
-                        deviceRow(device)
+                    ForEach(listViewModel.hosts, id: \.self) { host in
+                        hostRow(host)
                     }
                 }
                 if let message = listViewModel.message ?? connectViewModel.message {
@@ -86,49 +91,40 @@ struct DeviceListView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(Color.codevokeMuted)
                 }
-                if let diagnostics = RemoteUserFacingText.diagnostics(
-                    connectionId: connectViewModel.latestConnectionId,
-                    transport: connectViewModel.latestTransport,
-                    reason: connectViewModel.latestReason
-                ) {
-                    Text(diagnostics)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.codevokeMuted)
-                }
             }
             .padding(16)
         }
     }
 
-    private var codeEntryLink: some View {
-        NavigationLink {
-            DeviceCodeEntryView(authViewModel: authViewModel, connectViewModel: connectViewModel) { config in
-                chatConfig = config
-            }
-        } label: {
-            SettingsSectionCard {
-                HStack(spacing: 12) {
-                    Image(systemName: "number.square")
-                        .font(.system(size: 22, weight: .semibold))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.key("输入设备码"))
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.codevokeInk)
-                        Text(L10n.key("用电脑端显示的固定设备码发起连接。"))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.codevokeMuted)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .foregroundStyle(Color.codevokeMuted)
+    private var manualSection: some View {
+        SettingsSectionCard {
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsCardTitle("手动连接", subtitle: "输入电脑的局域网地址")
+                SettingsTextField("地址", text: $manualHost, placeholder: "192.168.1.10")
+                SettingsTextField("端口", text: $manualPort, placeholder: "\(DeviceConnectViewModel.defaultPort)")
+                Button {
+                    Task { await connect(host: manualHost, port: resolvedManualPort) }
+                } label: {
+                    Text(L10n.key(connectViewModel.isConnecting ? "连接中…" : "连接"))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(Color.black, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
-                .padding(16)
+                .buttonStyle(.codevokePress)
+                .disabled(connectViewModel.isConnecting || manualHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            .padding(16)
         }
-        .buttonStyle(.plain)
     }
 
-    private func deviceRow(_ device: RemoteDevice) -> some View {
+    private var resolvedManualPort: Int {
+        let trimmed = manualPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Int(trimmed) ?? DeviceConnectViewModel.defaultPort
+    }
+
+    private func hostRow(_ host: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "desktopcomputer")
                 .font(.system(size: 20, weight: .semibold))
@@ -136,25 +132,19 @@ struct DeviceListView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(device.online ? Color.green : Color.codevokeMuted.opacity(0.38))
+                        .fill(Color.green)
                         .frame(width: 7, height: 7)
-                    Text(device.deviceName)
+                    Text(host)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.codevokeInk)
-                        .lineLimit(2)
                 }
-                Text(deviceSubtitle(device))
+                Text(L10n.key("局域网可连接"))
                     .font(.system(size: 11))
                     .foregroundStyle(Color.codevokeMuted)
-                    .lineLimit(2)
             }
             Spacer()
             Button(L10n.string(connectViewModel.isConnecting ? "连接中…" : "连接")) {
-                Task {
-                    if let config = await connectViewModel.connect(deviceId: device.id, session: authViewModel.currentSession, device: device) {
-                        chatConfig = config
-                    }
-                }
+                Task { await connect(host: host, port: listViewModel.port) }
             }
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.white)
@@ -164,23 +154,21 @@ struct DeviceListView: View {
             .frame(minHeight: 44)
             .contentShape(Rectangle())
             .buttonStyle(.codevokePress)
-            .disabled(connectViewModel.isConnecting || !device.remoteEnabled || device.status != "active")
+            .disabled(connectViewModel.isConnecting)
             .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.vertical, 8)
     }
 
-    private func deviceSubtitle(_ device: RemoteDevice) -> String {
-        let platform = device.platform ?? "macos"
-        if device.lanEndpoint != nil, !(device.transientToken?.isEmpty ?? true) {
-            return L10n.format("%@ · 局域网可连接", platform)
+    private func rescan() async {
+        let lastHost = chatConfig?.macHost
+            ?? UserDefaults.standard.string(forKey: "remote.macHost")
+        await listViewModel.scan(preferredHost: lastHost)
+    }
+
+    private func connect(host: String, port: Int) async {
+        if let config = await connectViewModel.connect(host: host, port: port) {
+            chatConfig = config
         }
-        if device.remoteEnabled, device.status == "active" {
-            return L10n.format("%@ · 信令可请求", platform)
-        }
-        if let lastSeenAt = device.lastSeenAt {
-            return L10n.format("%@ · 上次活动 %@", platform, lastSeenAt)
-        }
-        return platform
     }
 }
