@@ -54,30 +54,8 @@
 		B0000000000000000000004A /* PanelStateBroadcasterAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000004A /* PanelStateBroadcasterAdapter.swift */; };
 		CHC000000000000000000001 /* ChatCore in Frameworks */ = {isa = PBXBuildFile; productRef = CHC000000000000000000003 /* ChatCore */; };
 		CHU000000000000000000001 /* ChatUI in Frameworks */ = {isa = PBXBuildFile; productRef = CHU000000000000000000003 /* ChatUI */; };
-		B0000000000000000000004B /* RemoteWebRTCBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000004B /* RemoteWebRTCBridge.swift */; };
-		B0000000000000000000004C /* RemoteTunnelClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000004C /* RemoteTunnelClient.swift */; };
 		CWEBRTC000000000000001 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = CWEBRTC000000000000003 /* WebRTC */; };
 
-			A10000000000000000000001 /* AccountAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AccountAPIClient.swift */; };
-			A10000000000000000000002 /* AccountAuthClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* AccountAuthClient.swift */; };
-			A10000000000000000000003 /* AccountTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* AccountTokenStore.swift */; };
-			A10000000000000000000004 /* DeviceIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* DeviceIdentityStore.swift */; };
-			A10000000000000000000022 /* RemoteCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000022 /* RemoteCredentialStore.swift */; };
-			A10000000000000000000005 /* DeviceRegistrationClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DeviceRegistrationClient.swift */; };
-			A10000000000000000000024 /* LanNetworkAddress.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000024 /* LanNetworkAddress.swift */; };
-			A10000000000000000000025 /* LanTokenPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000025 /* LanTokenPublisher.swift */; };
-				A10000000000000000000010 /* SignalingClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* SignalingClient.swift */; };
-			A10000000000000000000006 /* RemoteAccountModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* RemoteAccountModels.swift */; };
-			A10000000000000000000007 /* AccountRemoteSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* AccountRemoteSupport.swift */; };
-			A10000000000000000000008 /* AccountAuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* AccountAuthViewModel.swift */; };
-			A10000000000000000000009 /* DeviceProvisioningViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* DeviceProvisioningViewModel.swift */; };
-			A1000000000000000000000A /* AccountAuthRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* AccountAuthRootView.swift */; };
-			A1000000000000000000000B /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* LoginView.swift */; };
-			A1000000000000000000000C /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* RegisterView.swift */; };
-			A1000000000000000000000D /* ForgotPasswordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* ForgotPasswordView.swift */; };
-			A1000000000000000000000E /* AccountStatusCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* AccountStatusCard.swift */; };
-			A1000000000000000000000F /* AccountFormControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* AccountFormControls.swift */; };
-			A10000000000000000000020 /* AccountTokenStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* AccountTokenStoreTests.swift */; };
 	/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -129,29 +107,7 @@
 		F00000000000000000000048 /* PanelStateBroadcaster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelStateBroadcaster.swift; sourceTree = "<group>"; };
 		F00000000000000000000049 /* RemoteChatCommandRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteChatCommandRouter.swift; sourceTree = "<group>"; };
 		F0000000000000000000004A /* PanelStateBroadcasterAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelStateBroadcasterAdapter.swift; sourceTree = "<group>"; };
-		F0000000000000000000004B /* RemoteWebRTCBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteWebRTCBridge.swift; sourceTree = "<group>"; };
-		F0000000000000000000004C /* RemoteTunnelClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTunnelClient.swift; sourceTree = "<group>"; };
 
-			A20000000000000000000001 /* AccountAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountAPIClient.swift; sourceTree = "<group>"; };
-			A20000000000000000000002 /* AccountAuthClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountAuthClient.swift; sourceTree = "<group>"; };
-			A20000000000000000000003 /* AccountTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountTokenStore.swift; sourceTree = "<group>"; };
-			A20000000000000000000004 /* DeviceIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentityStore.swift; sourceTree = "<group>"; };
-			A20000000000000000000022 /* RemoteCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCredentialStore.swift; sourceTree = "<group>"; };
-			A20000000000000000000005 /* DeviceRegistrationClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceRegistrationClient.swift; sourceTree = "<group>"; };
-			A20000000000000000000024 /* LanNetworkAddress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanNetworkAddress.swift; sourceTree = "<group>"; };
-			A20000000000000000000025 /* LanTokenPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanTokenPublisher.swift; sourceTree = "<group>"; };
-				A20000000000000000000010 /* SignalingClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalingClient.swift; sourceTree = "<group>"; };
-			A20000000000000000000006 /* RemoteAccountModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAccountModels.swift; sourceTree = "<group>"; };
-			A20000000000000000000007 /* AccountRemoteSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountRemoteSupport.swift; sourceTree = "<group>"; };
-			A20000000000000000000008 /* AccountAuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountAuthViewModel.swift; sourceTree = "<group>"; };
-			A20000000000000000000009 /* DeviceProvisioningViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceProvisioningViewModel.swift; sourceTree = "<group>"; };
-			A2000000000000000000000A /* AccountAuthRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountAuthRootView.swift; sourceTree = "<group>"; };
-			A2000000000000000000000B /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-			A2000000000000000000000C /* RegisterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegisterView.swift; sourceTree = "<group>"; };
-			A2000000000000000000000D /* ForgotPasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgotPasswordView.swift; sourceTree = "<group>"; };
-			A2000000000000000000000E /* AccountStatusCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStatusCard.swift; sourceTree = "<group>"; };
-			A2000000000000000000000F /* AccountFormControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountFormControls.swift; sourceTree = "<group>"; };
-			A20000000000000000000020 /* AccountTokenStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountTokenStoreTests.swift; sourceTree = "<group>"; };
 			A20000000000000000000021 /* CodevokeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodevokeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 	/* End PBXFileReference section */
 
@@ -227,8 +183,6 @@
 			children = (
 				F00000000000000000000003 /* AppState.swift */,
 				F00000000000000000000026 /* ChatPanelState.swift */,
-				A20000000000000000000008 /* AccountAuthViewModel.swift */,
-				A20000000000000000000009 /* DeviceProvisioningViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -247,7 +201,6 @@
 				F00000000000000000000010 /* GlassPanel.swift */,
 				F00000000000000000000024 /* SettingsView.swift */,
 				F00000000000000000000033 /* SettingsPageView.swift */,
-					A60000000000000000000002 /* Account */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -271,7 +224,6 @@
 				F00000000000000000000017 /* TerminalLauncher.swift */,
 				F00000000000000000000018 /* LaunchHistoryStore.swift */,
 				G00000000000000000000009 /* Chat */,
-				A60000000000000000000001 /* AccountRemote */,
 					G00000000000000000000010 /* RemoteChat */,
 			);
 			path = Services;
@@ -316,48 +268,14 @@
 				F00000000000000000000048 /* PanelStateBroadcaster.swift */,
 				F00000000000000000000049 /* RemoteChatCommandRouter.swift */,
 				F0000000000000000000004A /* PanelStateBroadcasterAdapter.swift */,
-				F0000000000000000000004B /* RemoteWebRTCBridge.swift */,
-				F0000000000000000000004C /* RemoteTunnelClient.swift */,
 			);
 			path = RemoteChat;
 			sourceTree = "<group>";
 		};
 
-			A60000000000000000000001 /* AccountRemote */ = {
-				isa = PBXGroup;
-				children = (
-					A20000000000000000000001 /* AccountAPIClient.swift */,
-					A20000000000000000000002 /* AccountAuthClient.swift */,
-					A20000000000000000000003 /* AccountTokenStore.swift */,
-					A20000000000000000000004 /* DeviceIdentityStore.swift */,
-					A20000000000000000000022 /* RemoteCredentialStore.swift */,
-					A20000000000000000000005 /* DeviceRegistrationClient.swift */,
-					A20000000000000000000024 /* LanNetworkAddress.swift */,
-					A20000000000000000000025 /* LanTokenPublisher.swift */,
-					A20000000000000000000006 /* RemoteAccountModels.swift */,
-					A20000000000000000000007 /* AccountRemoteSupport.swift */,
-					A20000000000000000000010 /* SignalingClient.swift */,
-				);
-				path = AccountRemote;
-				sourceTree = "<group>";
-			};
-			A60000000000000000000002 /* Account */ = {
-				isa = PBXGroup;
-				children = (
-					A2000000000000000000000A /* AccountAuthRootView.swift */,
-					A2000000000000000000000B /* LoginView.swift */,
-					A2000000000000000000000C /* RegisterView.swift */,
-					A2000000000000000000000D /* ForgotPasswordView.swift */,
-					A2000000000000000000000E /* AccountStatusCard.swift */,
-					A2000000000000000000000F /* AccountFormControls.swift */,
-				);
-				path = Account;
-				sourceTree = "<group>";
-			};
 			A60000000000000000000003 /* CodevokeTests */ = {
 				isa = PBXGroup;
 				children = (
-					A20000000000000000000020 /* AccountTokenStoreTests.swift */,
 				);
 				path = CodevokeTests;
 				sourceTree = "<group>";
@@ -519,27 +437,6 @@
 				B00000000000000000000048 /* PanelStateBroadcaster.swift in Sources */,
 				B00000000000000000000049 /* RemoteChatCommandRouter.swift in Sources */,
 				B0000000000000000000004A /* PanelStateBroadcasterAdapter.swift in Sources */,
-				B0000000000000000000004B /* RemoteWebRTCBridge.swift in Sources */,
-				B0000000000000000000004C /* RemoteTunnelClient.swift in Sources */,
-				A10000000000000000000001 /* AccountAPIClient.swift in Sources */,
-				A10000000000000000000002 /* AccountAuthClient.swift in Sources */,
-				A10000000000000000000003 /* AccountTokenStore.swift in Sources */,
-				A10000000000000000000004 /* DeviceIdentityStore.swift in Sources */,
-				A10000000000000000000022 /* RemoteCredentialStore.swift in Sources */,
-				A10000000000000000000005 /* DeviceRegistrationClient.swift in Sources */,
-				A10000000000000000000024 /* LanNetworkAddress.swift in Sources */,
-				A10000000000000000000025 /* LanTokenPublisher.swift in Sources */,
-				A10000000000000000000006 /* RemoteAccountModels.swift in Sources */,
-				A10000000000000000000007 /* AccountRemoteSupport.swift in Sources */,
-				A10000000000000000000010 /* SignalingClient.swift in Sources */,
-				A10000000000000000000008 /* AccountAuthViewModel.swift in Sources */,
-				A10000000000000000000009 /* DeviceProvisioningViewModel.swift in Sources */,
-				A1000000000000000000000A /* AccountAuthRootView.swift in Sources */,
-				A1000000000000000000000B /* LoginView.swift in Sources */,
-				A1000000000000000000000C /* RegisterView.swift in Sources */,
-				A1000000000000000000000D /* ForgotPasswordView.swift in Sources */,
-				A1000000000000000000000E /* AccountStatusCard.swift in Sources */,
-				A1000000000000000000000F /* AccountFormControls.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -548,7 +445,6 @@
 				isa = PBXSourcesBuildPhase;
 				buildActionMask = 2147483647;
 				files = (
-					A10000000000000000000020 /* AccountTokenStoreTests.swift in Sources */,
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 			};

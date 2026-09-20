@@ -211,11 +211,6 @@ struct ProjectStore {
         if defaults.object(forKey: "remoteChatServerBindLAN") != nil {
             settings.remoteChatServerBindLAN = defaults.bool(forKey: "remoteChatServerBindLAN")
         }
-        if let token = defaults.string(forKey: "remoteChatServerToken"),
-           !token.isEmpty,
-           settings.remoteChatServerToken.isEmpty {
-            settings.remoteChatServerToken = token
-        }
         if let claudeModels = defaults.stringArray(forKey: "customClaudeModelIDs"), !claudeModels.isEmpty {
             settings.customClaudeModelIDs = claudeModels
         }

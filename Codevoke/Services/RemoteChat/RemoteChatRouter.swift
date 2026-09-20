@@ -5,32 +5,9 @@ import os
 
 private let remoteChatRouterLog = Logger(subsystem: "vin.anna.Codevoke", category: "RemoteChatRouter")
 
-/// Constant-time string comparison for secrets (bearer/transient tokens) to avoid a timing
-/// side-channel that a `==` short-circuit would leak over the network.
-func constantTimeEquals(_ a: String, _ b: String) -> Bool {
-    let aBytes = Array(a.utf8)
-    let bBytes = Array(b.utf8)
-    var diff = aBytes.count ^ bBytes.count
-    let n = Swift.max(aBytes.count, bBytes.count)
-    var index = 0
-    while index < n {
-        let x = index < aBytes.count ? aBytes[index] : 0
-        let y = index < bBytes.count ? bBytes[index] : 0
-        diff |= Int(x ^ y)
-        index += 1
-    }
-    return diff == 0
-}
-
 struct RemoteChatServerConfiguration {
     let port: UInt16
     let bindLAN: Bool
-    let token: String
-
-    func acceptsBearerToken(_ bearerToken: String?) -> Bool {
-        guard let bearerToken else { return false }
-        return constantTimeEquals(bearerToken, token) || RemoteChatServerController.shared.acceptsTransientToken(bearerToken)
-    }
 }
 
 protocol RemoteChatDataProviding {
@@ -63,14 +40,6 @@ struct RemoteChatStoreProvider: RemoteChatDataProviding {
     }
 }
 
-private struct RemoteICEConfigurationDTO: Encodable {
-    let iceServers: [RemoteICEServerDTO]
-}
-
-private struct RemoteICEServerDTO: Encodable {
-    let urls: [String]
-}
-
 struct RemoteChatRouter {
     private let configuration: RemoteChatServerConfiguration
     private let dataProvider: RemoteChatDataProviding
@@ -91,22 +60,11 @@ struct RemoteChatRouter {
                 version: 1,
                 bindLAN: configuration.bindLAN,
                 port: configuration.port,
-                authRequired: true
+                authRequired: false
             ))
         }
 
-        guard configuration.acceptsBearerToken(request.authorizationBearerToken) else {
-            return .error("unauthorized", message: "连接凭证无效，请重新连接。", statusCode: 401, reasonPhrase: "Unauthorized")
-        }
-
         let components = pathComponents(request.path)
-
-        if components == ["remote", "turn", "ice-servers"] {
-            guard request.method == "GET" else {
-                return .error("method_not_allowed", message: "当前请求方式不支持。", statusCode: 405, reasonPhrase: "Method Not Allowed")
-            }
-            return iceServersResponse()
-        }
 
         if components == ["attachments"] {
             guard request.method == "POST" else {
@@ -247,12 +205,6 @@ struct RemoteChatRouter {
                 return .error(requestId: request.requestId, message: error.message)
             }
         }
-    }
-
-    private func iceServersResponse() -> RemoteChatHTTPResponse {
-        .json(RemoteICEConfigurationDTO(iceServers: [
-            RemoteICEServerDTO(urls: ["stun:8.156.64.76:3478"])
-        ]))
     }
 
     private func projectsResponse() -> RemoteChatHTTPResponse {

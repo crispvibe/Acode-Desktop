@@ -2,8 +2,6 @@ import SwiftUI
 
 struct EditorTabBarView: View {
     @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var accountAuth: AccountAuthViewModel
-    var onLoginButtonTap: () -> Void = {}
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -21,45 +19,7 @@ struct EditorTabBarView: View {
                 .padding(.trailing, 96)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            loginButton
-                .padding(.top, 6)
-                .padding(.trailing, 12)
-        }
         .frame(height: 39)
-    }
-
-    private var loginButton: some View {
-        Button(action: onLoginButtonTap) {
-            HStack(spacing: 5) {
-                Image(systemName: "person.crop.circle")
-                    .font(.system(size: 12, weight: .medium))
-                Text(loginButtonTitle)
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .frame(height: 26)
-            .background(AppTheme.controlSurface)
-            .clipShape(Capsule())
-            .overlay {
-                Capsule().stroke(AppTheme.hairline, lineWidth: 1)
-            }
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .help("登录 Codevoke 账号")
-    }
-
-    private var loginButtonTitle: String {
-        switch accountAuth.gateState {
-        case .checking:
-            "检查中"
-        case .unauthenticated:
-            "登录"
-        case .authenticated:
-            accountAuth.maskedAccount.isEmpty ? "已登录" : accountAuth.maskedAccount
-        }
     }
 
     private var addTabButton: some View {

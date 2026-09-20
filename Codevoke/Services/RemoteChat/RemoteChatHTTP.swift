@@ -6,13 +6,6 @@ struct RemoteChatHTTPRequest {
     let queryItems: [String: String]
     let headers: [String: String]
     let body: Data
-
-    var authorizationBearerToken: String? {
-        guard let value = headers["authorization"] else { return nil }
-        let prefix = "Bearer "
-        guard value.hasPrefix(prefix) else { return nil }
-        return String(value.dropFirst(prefix.count))
-    }
 }
 
 struct RemoteChatHTTPResponse {

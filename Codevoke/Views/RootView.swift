@@ -3,12 +3,10 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var accountAuth: AccountAuthViewModel
     @State private var chatPanelWidth: CGFloat = 420
     @State private var dragStartChatPanelWidth: CGFloat?
     @State private var isHoveringResizeHandle = false
     @State private var workbenchContentWidth: CGFloat = 0
-    @State private var showingAuthDialog = false
 
     /// Bridge between SwiftUI `@AppStorage`-style read/write and `appState.settings`.
     /// We can't use a property wrapper here because `appState` is injected via the
@@ -32,12 +30,6 @@ struct RootView: View {
         .padding(.bottom, 8)
         .frame(minWidth: 1320, minHeight: 760)
         .background(rootWindowBackground)
-        .overlay {
-            if shouldShowAuthDialog {
-                AuthDialogOverlay(isPresented: $showingAuthDialog, allowsDismiss: accountAuth.gateState == .authenticated)
-                    .transition(.opacity.combined(with: .scale(scale: 0.985)))
-            }
-        }
         .alert("提示", isPresented: Binding(
             get: { appState.errorMessage != nil },
             set: { if !$0 { appState.errorMessage = nil } }
@@ -75,10 +67,6 @@ struct RootView: View {
         }
     }
 
-    private var shouldShowAuthDialog: Bool {
-        showingAuthDialog || accountAuth.gateState == .unauthenticated
-    }
-
     private var rootWindowBackground: some View {
         ZStack {
             VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
@@ -98,11 +86,7 @@ struct RootView: View {
 
     private var workbenchCard: some View {
         VStack(spacing: 0) {
-            EditorTabBarView {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    showingAuthDialog = true
-                }
-            }
+            EditorTabBarView()
 
             GeometryReader { proxy in
                 HStack(spacing: 0) {
@@ -194,59 +178,6 @@ struct RootView: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             chatPanelWidth = width
-        }
-    }
-}
-
-private struct AuthDialogOverlay: View {
-    @EnvironmentObject private var accountAuth: AccountAuthViewModel
-    @Binding var isPresented: Bool
-    let allowsDismiss: Bool
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.10)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if allowsDismiss { dismiss() }
-                }
-
-            dialogCard
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    @ViewBuilder
-    private var dialogCard: some View {
-        if accountAuth.gateState == .authenticated {
-            AccountRemoteControlPanel()
-                .frame(width: 860)
-        } else {
-            VStack(alignment: .leading, spacing: 0) {
-                AccountAuthRootView()
-            }
-            .padding(22)
-            .frame(width: 400)
-            .background {
-                ZStack {
-                    VisualEffectView(material: .popover, blendingMode: .withinWindow)
-                        .opacity(0.96)
-                    AppTheme.cardSurface.opacity(0.92)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(AppTheme.hairline, lineWidth: 1)
-            }
-            .shadow(color: Color.black.opacity(0.16), radius: 30, y: 18)
-        }
-    }
-
-    private func dismiss() {
-        withAnimation(.easeOut(duration: 0.16)) {
-            isPresented = false
         }
     }
 }

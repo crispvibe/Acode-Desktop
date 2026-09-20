@@ -4,7 +4,6 @@ import SwiftUI
 struct SettingsPageView: View {
     private enum SettingsCategory: String, CaseIterable, Identifiable {
         case general
-        case accountSecurity
         case claude
         case codex
         case remoteChat
@@ -17,7 +16,6 @@ struct SettingsPageView: View {
         var title: String {
             switch self {
             case .general: "通用"
-            case .accountSecurity: "账号与安全"
             case .claude: "Claude Code"
             case .codex: "Codex"
             case .remoteChat: "设备连接"
@@ -30,7 +28,6 @@ struct SettingsPageView: View {
         var systemImage: String {
             switch self {
             case .general: "gearshape"
-            case .accountSecurity: "person.crop.circle.badge.checkmark"
             case .claude: "terminal"
             case .codex: "cpu"
             case .remoteChat: "display"
@@ -92,18 +89,6 @@ struct SettingsPageView: View {
         var isTooLarge: Bool
     }
 
-    private struct AppUpdateCheckResponse: Decodable {
-        let updateAvailable: Bool
-        let latestVersion: String
-        let latestBuildNumber: String
-        let packageArch: String?
-        let releaseNotes: String
-        let updateType: String
-        let downloadUrl: String
-        let appStoreUrl: String
-        let forceUpdate: Bool
-    }
-
     private struct SettingsDiskSnapshot: Sendable {
         var claude: ClaudeSettingsSnapshot
         var codex: CodexSettingsSnapshot
@@ -118,11 +103,7 @@ struct SettingsPageView: View {
 
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var modelService: ChatModelService
-    @EnvironmentObject private var accountAuth: AccountAuthViewModel
-    @EnvironmentObject private var deviceProvisioning: DeviceProvisioningViewModel
     private let showsBackButton: Bool
-    private let accountDeletionWaiveDisplayText = "确认放弃电脑端服务权益"
-    private let accountDeletionWaiveBackendText = "不要这些权益"
 
     init(showsBackButton: Bool = true) {
         self.showsBackButton = showsBackButton
@@ -168,8 +149,6 @@ struct SettingsPageView: View {
 
     @State private var remoteChatEnabled = true
     @State private var remoteChatBindLAN = true
-    @State private var remoteChatPublicHost = ""
-    @State private var remoteChatPublicPort = ""
     @State private var remoteChatStatus = ""
 
     @State private var selectedGlobalRuleKind: GlobalRuleKind = .claude
@@ -181,14 +160,6 @@ struct SettingsPageView: View {
     @State private var globalRuleLoadTask: Task<Void, Never>?
     @State private var claudeModelFetchTask: Task<Void, Never>?
     @State private var codexModelFetchTask: Task<Void, Never>?
-    @State private var updateCheckStatus = ""
-    @State private var updateDownloadURL: URL?
-    @State private var isCheckingForUpdate = false
-    @State private var deleteConfirmAccount = ""
-    @State private var deleteConfirmDestroy = ""
-    @State private var deleteConfirmWaiveRights = ""
-    @State private var deleteReason = ""
-
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知"
     }
@@ -277,9 +248,6 @@ struct SettingsPageView: View {
         .sheet(item: $editingCodexProfile) { profile in
             codexProfileEditorSheet(profile)
         }
-        .sheet(item: legalDocumentBinding) { document in
-            LegalDocumentSheet(document: document)
-        }
     }
 
     private var settingsSidebar: some View {
@@ -334,8 +302,6 @@ struct SettingsPageView: View {
         switch selectedCategory {
         case .general:
             generalSection
-        case .accountSecurity:
-            accountSecuritySection
         case .claude:
             relaySection
         case .codex:
@@ -492,93 +458,6 @@ struct SettingsPageView: View {
         }
     }
 
-    // MARK: - Account & Security
-
-    private var accountSecuritySection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            settingsCard(title: "账号与安全") {
-                accountSummaryRow
-
-                Divider().opacity(0.28)
-
-                accountDangerPanel
-            }
-        }
-        .task {
-            await accountAuth.loadLegalDocumentsIfNeeded()
-        }
-    }
-
-    private var accountSummaryRow: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "person.crop.circle.fill.badge.checkmark")
-                .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(accountAuth.currentSession.map { accountRemoteDisplayAccount($0.user) } ?? "未登录")
-                    .font(.system(size: 15, weight: .semibold))
-                Text(accountAuth.currentSession.map { "账号状态：\($0.user.status)" } ?? "登录后可以退出登录和注销账号")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 12)
-            Button("退出登录") {
-                Task { await accountAuth.logout() }
-            }
-            .buttonStyle(SettingsSecondaryButtonStyle())
-            .disabled(accountAuth.currentSession == nil)
-        }
-        .padding(14)
-        .background(AppTheme.inputSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AppTheme.hairline, lineWidth: 1))
-    }
-
-    private var accountDangerPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            settingsFormHeader(title: "注销账号", subtitle: "注销会删除远程账号主数据，操作不可恢复。")
-            TextField("输入：我确认注销账号", text: $deleteConfirmAccount)
-                .settingsTextFieldChrome()
-            TextField("输入：确认销毁", text: $deleteConfirmDestroy)
-                .settingsTextFieldChrome()
-            TextField("输入：\(accountDeletionWaiveDisplayText)", text: $deleteConfirmWaiveRights)
-                .settingsTextFieldChrome()
-            TextField("注销原因（选填）", text: $deleteReason)
-                .settingsTextFieldChrome()
-            if let message = accountAuth.accountDeletionMessage {
-                settingsInlineMessage(message)
-            }
-            Button(accountAuth.accountDeletionSubmitting ? "注销中…" : "确认注销账号") {
-                Task {
-                    let ok = await accountAuth.requestAccountDeletion(
-                        confirmAccount: deleteConfirmAccount,
-                        confirmDestroy: deleteConfirmDestroy,
-                        confirmWaiveRights: accountDeletionWaiveBackendText,
-                        reason: deleteReason
-                    )
-                    if ok {
-                        deleteConfirmAccount = ""
-                        deleteConfirmDestroy = ""
-                        deleteConfirmWaiveRights = ""
-                        deleteReason = ""
-                    }
-                }
-            }
-            .buttonStyle(SettingsDestructiveButtonStyle())
-            .disabled(!canSubmitAccountDeletion || accountAuth.accountDeletionSubmitting || accountAuth.currentSession == nil)
-        }
-        .padding(14)
-        .background(AppTheme.secondaryCardSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AppTheme.weakHairline, lineWidth: 1))
-    }
-
-    private var canSubmitAccountDeletion: Bool {
-        deleteConfirmAccount.trimmingCharacters(in: .whitespacesAndNewlines) == "我确认注销账号"
-            && deleteConfirmDestroy.trimmingCharacters(in: .whitespacesAndNewlines) == "确认销毁"
-            && deleteConfirmWaiveRights.trimmingCharacters(in: .whitespacesAndNewlines) == accountDeletionWaiveDisplayText
-    }
-
     private func settingsFormHeader(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
@@ -604,23 +483,21 @@ struct SettingsPageView: View {
             settingsCard(title: "设备连接") {
                 deviceConnectionOverview
                 remoteChatControlPanel
-                remoteAccountPanel
             }
         }
     }
 
     private var deviceConnectionOverview: some View {
-        let diagnostics = deviceProvisioning.remoteChatDiagnostics
-        let isSignedIn = accountAuth.gateState == .authenticated
+        let diagnostics = RemoteChatServerController.shared.currentDiagnostics()
         let isServerReady = remoteChatEnabled && RemoteChatServerController.shared.isRunning
-        let connectionCount = diagnostics.activeWebSocketCount + diagnostics.remoteConnectionIDs.count
+        let connectionCount = diagnostics.activeWebSocketCount
 
         return VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("手机、Mac、项目会话")
                         .font(.system(size: 16, weight: .semibold))
-                    Text("这里管理 iOS 设备连接到这台 Mac 后的访问入口、信令和本地会话同步状态。")
+                    Text("同一局域网内的设备可以通过 HTTP + WebSocket 直连这台 Mac，无需账号或云端中转。")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -631,14 +508,14 @@ struct SettingsPageView: View {
             HStack(alignment: .center, spacing: 16) {
                 connectionNode(
                     title: "iPhone",
-                    subtitle: isSignedIn ? "同账号设备" : "等待登录",
+                    subtitle: "同局域网设备",
                     systemImage: "iphone",
-                    isActive: isSignedIn
+                    isActive: isServerReady
                 )
-                connectionRail(isActive: isSignedIn && isServerReady)
+                connectionRail(isActive: isServerReady)
                 connectionNode(
-                    title: deviceProvisioning.device?.deviceName ?? "Codevoke Mac",
-                    subtitle: deviceProvisioning.device.map { "设备 #\($0.id)" } ?? "本机设备",
+                    title: "Codevoke Mac",
+                    subtitle: "本机设备",
                     systemImage: "desktopcomputer",
                     isActive: isServerReady
                 )
@@ -652,7 +529,7 @@ struct SettingsPageView: View {
             }
 
             HStack(spacing: 10) {
-                metricChip(title: "连接方式", value: "局域网 / P2P 直连")
+                metricChip(title: "连接方式", value: "局域网直连")
                 metricChip(title: "本机端口", value: "\(RemoteChatServerController.defaultPort)")
                 metricChip(title: "WebSocket", value: diagnostics.activeWebSocketCount > 0 ? "\(diagnostics.activeWebSocketCount) 个在线" : "空闲")
             }
@@ -661,33 +538,6 @@ struct SettingsPageView: View {
         .background(AppTheme.inputSurface)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(AppTheme.hairline, lineWidth: 1))
-    }
-
-    @ViewBuilder
-    private var remoteAccountPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Divider().opacity(0.28)
-            switch accountAuth.gateState {
-            case .checking:
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("正在检查登录状态…")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
-            case .unauthenticated:
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("登录后会把这台 Mac 注册为可连接设备。")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    AccountAuthRootView()
-                        .frame(maxWidth: 400, alignment: .leading)
-                }
-            case .authenticated:
-                AccountRemoteControlPanel()
-            }
-        }
     }
 
     private var remoteChatControlPanel: some View {
@@ -700,26 +550,9 @@ struct SettingsPageView: View {
             if remoteChatEnabled {
                 remoteSettingToggle(
                     title: "允许局域网直连",
-                    subtitle: "手机与 Mac 在同一 Wi‑Fi 时，优先走局域网 TCP 直连",
+                    subtitle: "手机与 Mac 在同一 Wi‑Fi 时，走局域网 TCP 直连",
                     isOn: $remoteChatBindLAN
                 )
-                if let lanPublishStatus = deviceProvisioning.lanPublishStatus, !lanPublishStatus.isEmpty {
-                    Text(lanPublishStatus)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("公网地址（端口映射，可选）")
-                        .font(.system(size: 13, weight: .semibold))
-                    TextField("例如 203.0.113.10 或 home.example.com", text: $remoteChatPublicHost)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("公网端口（留空则使用 \(RemoteChatServerController.defaultPort)）", text: $remoteChatPublicPort)
-                        .textFieldStyle(.roundedBorder)
-                    Text("在路由器把公网端口映射到本机 \(RemoteChatServerController.defaultPort) 后填写。P2P 失败时手机会尝试该地址直连。")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
             }
 
             HStack(alignment: .center, spacing: 12) {
@@ -1346,27 +1179,9 @@ struct SettingsPageView: View {
     private var updateSection: some View {
         settingsCard(title: "版本更新") {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("当前版本：\(appVersion)（\(buildNumber)）")
-                        .font(.system(size: 13))
-                    if !updateCheckStatus.isEmpty {
-                        Text(updateCheckStatus)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Text("当前版本：\(appVersion)（\(buildNumber)）")
+                    .font(.system(size: 13))
                 Spacer()
-                if let updateDownloadURL {
-                    Button("下载更新") {
-                        NSWorkspace.shared.open(updateDownloadURL)
-                    }
-                    .buttonStyle(SettingsSecondaryButtonStyle())
-                }
-                Button("检查更新") {
-                    checkForUpdates()
-                }
-                .disabled(isCheckingForUpdate)
-                .buttonStyle(SettingsSecondaryButtonStyle())
             }
         }
     }
@@ -1386,57 +1201,10 @@ struct SettingsPageView: View {
             }
 
             updateSection
-
-            settingsCard(title: "协议与隐私") {
-                VStack(spacing: 0) {
-                    ForEach(RemoteLegalDocumentType.allCases, id: \.self) { type in
-                        Button {
-                            accountAuth.presentLegalDocument(type)
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "doc.text")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 28, height: 28)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(type.title)
-                                        .font(.system(size: 13, weight: .semibold))
-                                    Text(accountAuth.legalDocuments[type]?.version ?? "点击查看")
-                                        .font(.system(size: 12))
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .padding(.vertical, 10)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        if type != RemoteLegalDocumentType.allCases.last {
-                            Divider().opacity(0.22)
-                        }
-                    }
-                }
-                if let message = accountAuth.documentMessage {
-                    settingsInlineMessage(message)
-                }
-            }
-            .task {
-                await accountAuth.loadLegalDocumentsIfNeeded()
-            }
         }
     }
 
     // MARK: - UI Helpers
-
-    private var legalDocumentBinding: Binding<RemoteLegalDocument?> {
-        Binding(
-            get: { accountAuth.selectedLegalDocument },
-            set: { _ in accountAuth.dismissLegalDocument() }
-        )
-    }
 
     @ViewBuilder
     private func envField(label: String, placeholder: String, text: Binding<String>, secure: Bool = false) -> some View {
@@ -1908,8 +1676,6 @@ struct SettingsPageView: View {
         let s = appState.settings
         remoteChatEnabled = s.remoteChatServerEnabled
         remoteChatBindLAN = s.remoteChatServerBindLAN
-        remoteChatPublicHost = s.remoteChatPublicHost
-        remoteChatPublicPort = s.remoteChatPublicPort > 0 ? String(s.remoteChatPublicPort) : ""
     }
 
     private func saveRemoteChatSettings() {
@@ -1917,9 +1683,6 @@ struct SettingsPageView: View {
         settings.remoteChatServerEnabled = remoteChatEnabled
         settings.remoteChatServerPort = Int(RemoteChatServerController.defaultPort)
         settings.remoteChatServerBindLAN = remoteChatBindLAN
-        settings.remoteChatPublicHost = remoteChatPublicHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedPublicPort = remoteChatPublicPort.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.remoteChatPublicPort = Int(trimmedPublicPort) ?? 0
         do {
             try ProjectStore.saveSettings(settings)
             appState.settings = settings
@@ -1928,7 +1691,6 @@ struct SettingsPageView: View {
             return
         }
         RemoteChatServerController.shared.restart()
-        deviceProvisioning.restartLanTokenPublisher()
         remoteChatStatus = remoteChatEnabled ? "已保存，设备连接服务已更新。" : "已保存，设备连接服务已关闭。"
     }
 
@@ -2889,47 +2651,6 @@ struct SettingsPageView: View {
         default:
             return urlError.localizedDescription
         }
-    }
-
-    private func checkForUpdates() {
-        updateCheckStatus = "正在检查更新..."
-        updateDownloadURL = nil
-        isCheckingForUpdate = true
-        Task {
-            do {
-                let version = appVersion.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? appVersion
-                let build = buildNumber.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? buildNumber
-                let arch = macUpdateArchitecture.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? macUpdateArchitecture
-                let result: AppUpdateCheckResponse = try await AccountAPIClient().get("remote/app-updates/check?platform=macos&channel=stable&arch=\(arch)&version=\(version)&buildNumber=\(build)")
-                await MainActor.run {
-                    isCheckingForUpdate = false
-                    if result.updateAvailable {
-                        let urlString = result.downloadUrl.isEmpty ? result.appStoreUrl : result.downloadUrl
-                        updateDownloadURL = URL(string: urlString)
-                        let buildText = result.latestBuildNumber.isEmpty ? "" : "（\(result.latestBuildNumber)）"
-                        let forceText = result.forceUpdate ? "，这是强制更新" : ""
-                        updateCheckStatus = "发现新版 \(result.latestVersion)\(buildText)\(forceText)。\(result.releaseNotes)"
-                    } else {
-                        updateCheckStatus = "当前已是最新版本。"
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    isCheckingForUpdate = false
-                    updateCheckStatus = "检查失败：\(error.localizedDescription)"
-                }
-            }
-        }
-    }
-
-    private var macUpdateArchitecture: String {
-        #if arch(arm64)
-        return "arm64"
-        #elseif arch(x86_64)
-        return "x86_64"
-        #else
-        return "universal"
-        #endif
     }
 
     private func parseModelListResponse(_ data: Data) -> [String]? {

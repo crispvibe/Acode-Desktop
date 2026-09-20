@@ -1,16 +1,12 @@
 import socket, base64, os, struct, json, sys, uuid, time
 
-TOKEN = os.environ.get("ACODE_WS_TEST_TOKEN")
-if not TOKEN:
-    raise SystemExit("Set ACODE_WS_TEST_TOKEN before running this smoke script.")
 host, port, path = "127.0.0.1", 18765, "/chat"
 
 def ws_connect():
     s = socket.create_connection((host, port), timeout=5)
     key = base64.b64encode(os.urandom(16)).decode()
     s.send((f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\n"
-            f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n"
-            f"Authorization: Bearer {TOKEN}\r\n\r\n").encode())
+            f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
     assert "101" in s.recv(4096).decode(errors="replace").split("\r\n")[0]
     return s
 

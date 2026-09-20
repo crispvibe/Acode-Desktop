@@ -128,8 +128,6 @@ final class RemoteChatServer {
     var onDiagnosticsChanged: ((RemoteChatServerDiagnostics) -> Void)?
 
     private var webSocketConnections: [UUID: NWConnection] = [:]
-    private var webSocketRemoteConnectionIDs: [UUID: String] = [:]
-    private var latestRemoteConnectionID: String?
     private var connectionStates: [UUID: RemoteChatConnectionState] = [:]
     private let serverEpoch = UUID().uuidString
     private var nextStreamCursor = 0
@@ -169,9 +167,6 @@ final class RemoteChatServer {
     }
 
     private var vncPipeline: VNCPipeline?
-    private var webRTCFocusStates: [Int: RemoteChatConnectionState] = [:]
-    private var webRTCSenders: [Int: (String) -> Void] = [:]
-    private var webRTCInboundTaskByConnection: [Int: Task<Void, Never>] = [:]
 
     private lazy var bridge = RemoteChatBridge { [weak self] event in
         self?.broadcastWebSocketEvent(event)
@@ -272,12 +267,7 @@ final class RemoteChatServer {
                 connection.cancel()
             }
             webSocketConnections.removeAll()
-            webSocketRemoteConnectionIDs.removeAll()
             connectionStates.removeAll()
-            webRTCFocusStates.removeAll()
-            webRTCSenders.removeAll()
-            webRTCInboundTaskByConnection.values.forEach { $0.cancel() }
-            webRTCInboundTaskByConnection.removeAll()
             notifyDiagnosticsChangedLocked()
         }
         bridge.stop()
@@ -348,17 +338,12 @@ final class RemoteChatServer {
             send(.error("method_not_allowed", message: "当前请求方式不支持。", statusCode: 405, reasonPhrase: "Method Not Allowed"), on: connection)
             return
         }
-        guard configuration.acceptsBearerToken(request.authorizationBearerToken) else {
-            send(.error("unauthorized", message: "连接凭证无效，请重新连接。", statusCode: 401, reasonPhrase: "Unauthorized"), on: connection)
-            return
-        }
         guard let response = RemoteChatWebSocket.handshakeResponse(for: request) else {
             send(.error("bad_websocket_upgrade", message: "实时连接启动失败，请重新进入对话。", statusCode: 400, reasonPhrase: "Bad Request"), on: connection)
             return
         }
 
         let connectionID = UUID()
-        let remoteConnectionID = backendConnectionID(from: request)
 
         connection.send(content: response.data, completion: .contentProcessed { [weak self] error in
             if error != nil {
@@ -366,13 +351,9 @@ final class RemoteChatServer {
                 return
             }
             self?.webSocketConnections[connectionID] = connection
-            if let remoteConnectionID {
-                self?.webSocketRemoteConnectionIDs[connectionID] = remoteConnectionID
-                self?.latestRemoteConnectionID = remoteConnectionID
-            }
             self?.connectionStates[connectionID] = RemoteChatConnectionState()
             guard let self else { return }
-            print("RemoteChatServer accepted ws_id=\(connectionID.uuidString) connection_id=\(remoteConnectionID ?? "none")")
+            print("RemoteChatServer accepted ws_id=\(connectionID.uuidString)")
             self.notifyDiagnosticsChangedLocked()
             self.sendWebSocketEvent(self.makeSystemEvent(type: "hello", status: "connected"), on: connection)
             self.receiveWebSocketFrames(from: connection, connectionID: connectionID, buffer: Data())
@@ -466,9 +447,6 @@ final class RemoteChatServer {
     }
 
     private func eventsResponse(request: RemoteChatHTTPRequest) -> RemoteChatHTTPResponse {
-        guard configuration.acceptsBearerToken(request.authorizationBearerToken) else {
-            return .error("unauthorized", message: "连接凭证无效，请重新连接。", statusCode: 401, reasonPhrase: "Unauthorized")
-        }
         let sessionID = request.queryItems["sessionId"].flatMap(UUID.init(uuidString:))
         let afterCursor = request.queryItems["afterCursor"].flatMap(Int.init) ?? 0
         let limit = request.queryItems["limit"].flatMap(Int.init).map { min(max($0, 1), 500) } ?? 200
@@ -579,20 +557,11 @@ final class RemoteChatServer {
     private func broadcastVNCEnvelope(_ envelope: PanelStateEnvelope) {
         queue.async { [weak self] in
             guard let self else { return }
-            let webRTCText = self.encodedJSONText(envelope)
             for (connectionID, connection) in self.webSocketConnections {
                 guard let state = self.connectionStates[connectionID] else { continue }
                 if state.protocolMode == .legacy { continue }
                 guard self.shouldSendVNCEnvelope(envelope, to: state) else { continue }
                 self.sendVNCEnvelope(envelope, on: connection)
-            }
-            guard let webRTCText else { return }
-            for (connectionID, send) in self.webRTCSenders {
-                guard let state = self.webRTCFocusStates[connectionID],
-                      self.shouldSendVNCEnvelope(envelope, to: state) else {
-                    continue
-                }
-                send(webRTCText)
             }
         }
     }
@@ -636,100 +605,6 @@ final class RemoteChatServer {
         }
     }
 
-    func registerWebRTCSender(connectionId: Int, send: @escaping (String) -> Void) {
-        queue.async {
-            self.webRTCSenders[connectionId] = send
-        }
-    }
-
-    func pushWebRTCBootstrapSnapshot(connectionId: Int, attempt: Int = 0) {
-        let sender = queue.sync { webRTCSenders[connectionId] }
-        guard let sender else {
-            print("[RemoteChatServer] webRTC bootstrap snapshot skipped connectionId=\(connectionId) reason=senderNotRegistered attempt=\(attempt)")
-            guard attempt < 3 else { return }
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 200_000_000)
-                self?.pushWebRTCBootstrapSnapshot(connectionId: connectionId, attempt: attempt + 1)
-            }
-            return
-        }
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            guard let pipeline = self.vncPipeline else {
-                print("[RemoteChatServer] webRTC bootstrap snapshot skipped connectionId=\(connectionId) reason=pipelineNotReady")
-                return
-            }
-            guard let snapshot = pipeline.broadcaster.snapshot(for: nil) else {
-                print("[RemoteChatServer] webRTC bootstrap snapshot skipped connectionId=\(connectionId) reason=noSnapshot")
-                return
-            }
-            self.queue.async {
-                if self.webRTCFocusStates[connectionId] == nil {
-                    self.webRTCFocusStates[connectionId] = RemoteChatConnectionState()
-                }
-            }
-            print("[RemoteChatServer] webRTC bootstrap snapshot push connectionId=\(connectionId) revision=\(snapshot.revision) projects=\(snapshot.projects.count) sessions=\(snapshot.sessions.count) models=\(snapshot.models.count)")
-            self.replyEncoded(PanelStateEnvelope(snapshot: snapshot), reply: sender)
-        }
-    }
-
-    func unregisterWebRTCConnection(connectionId: Int) {
-        queue.async {
-            self.webRTCSenders.removeValue(forKey: connectionId)
-            self.webRTCFocusStates.removeValue(forKey: connectionId)
-            self.webRTCInboundTaskByConnection[connectionId]?.cancel()
-            self.webRTCInboundTaskByConnection.removeValue(forKey: connectionId)
-        }
-    }
-
-    func handleWebRTCTextFrame(_ text: String, connectionId: Int, reply: @escaping (String) -> Void) {
-        guard let data = text.data(using: .utf8) else { return }
-        guard data.count <= RemoteRecoveryLimits.maximumTextFrameUTF8Bytes else {
-            replyEncoded(RemoteRecoveryResponse.error(requestId: Self.recoveryRequestId(from: data) ?? UUID(), message: "恢复请求过大，请压缩附件后重试。"), reply: reply)
-            return
-        }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        struct TypeTag: Decodable { let type: String? }
-        guard let tag = try? decoder.decode(TypeTag.self, from: data) else { return }
-        if handleRecoveryRequest(text: text, reply: reply) {
-            return
-        }
-        if tag.type == RemoteVNCFrameType.command {
-            guard let command = try? decoder.decode(Command.self, from: data) else {
-                let ack = CommandAck(commandId: Self.commandId(from: data) ?? UUID(), status: .error, message: "操作内容格式不正确，请重试。", sessionId: nil)
-                replyEncoded(ack, reply: reply)
-                return
-            }
-            print("[RemoteChatServer] webRTC command received connectionId=\(connectionId) op=\(command.op.rawValue) session=\(command.sessionId?.uuidString ?? "draft")")
-            queue.sync {
-                if webRTCFocusStates[connectionId] == nil {
-                    webRTCFocusStates[connectionId] = RemoteChatConnectionState()
-                }
-            }
-            let isDraftCommand = command.op == .newDraftSession
-            queue.sync {
-                let previousTask = self.webRTCInboundTaskByConnection[connectionId]
-                let task = Task { [weak self] in
-                    await previousTask?.value
-                    guard let self, !Task.isCancelled else { return }
-                    await self.processWebRTCCommand(
-                        command,
-                        connectionId: connectionId,
-                        isDraftCommand: isDraftCommand,
-                        reply: reply
-                    )
-                }
-                self.webRTCInboundTaskByConnection[connectionId] = task
-            }
-            return
-        }
-        if tag.type == "resume" {
-            guard let control = try? decoder.decode(RemoteChatWebSocketControlEnvelope.self, from: data) else { return }
-            pushWebRTCResumeSnapshot(connectionId: connectionId, sessionID: control.sessionId, lastRevision: control.lastRevision, reply: reply)
-        }
-    }
-
     private func handleRecoveryRequest(text: String, reply: @escaping (String) -> Void) -> Bool {
         guard let data = text.data(using: .utf8) else { return false }
         let decoder = JSONDecoder()
@@ -748,56 +623,12 @@ final class RemoteChatServer {
         return true
     }
 
-    private static func recoveryRequestId(from data: Data) -> UUID? {
-        struct RequestIdEnvelope: Decodable { let requestId: UUID? }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        guard let envelope = try? decoder.decode(RequestIdEnvelope.self, from: data) else { return nil }
-        return envelope.requestId
-    }
-
     private static func commandId(from data: Data) -> UUID? {
         struct CommandIdEnvelope: Decodable { let commandId: UUID? }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let envelope = try? decoder.decode(CommandIdEnvelope.self, from: data) else { return nil }
         return envelope.commandId
-    }
-
-    private func pushWebRTCResumeSnapshot(connectionId: Int, sessionID: UUID?, lastRevision: Int?, reply: @escaping (String) -> Void) {
-        queue.async {
-            if self.webRTCFocusStates[connectionId] == nil {
-                self.webRTCFocusStates[connectionId] = RemoteChatConnectionState()
-            }
-            if let sessionID {
-                self.webRTCFocusStates[connectionId]?.focusedSessionID = sessionID
-            }
-        }
-        Task { @MainActor [weak self] in
-            guard let self, let pipeline = self.vncPipeline else { return }
-            let payload = pipeline.broadcaster.replayPayload(sessionId: sessionID, lastRevision: lastRevision)
-            switch payload {
-            case .snapshot(let snapshot):
-                self.replyEncoded(PanelStateEnvelope(snapshot: snapshot), reply: reply)
-            case .patches(let patches):
-                for patch in patches {
-                    self.replyEncoded(PanelStateEnvelope(patch: patch), reply: reply)
-                }
-            case .empty:
-                if let snapshot = pipeline.broadcaster.snapshot(for: sessionID) ?? pipeline.broadcaster.snapshot(for: nil) {
-                    self.replyEncoded(PanelStateEnvelope(snapshot: snapshot), reply: reply)
-                }
-            }
-        }
-    }
-
-    private func pushWebRTCFocusedSnapshot(connectionId: Int, reply: @escaping (String) -> Void) {
-        let focusedSessionID = queue.sync { webRTCFocusStates[connectionId]?.focusedSessionID }
-        Task { @MainActor [weak self] in
-            guard let self, let pipeline = self.vncPipeline else { return }
-            guard let snapshot = pipeline.broadcaster.snapshot(for: focusedSessionID) ?? pipeline.broadcaster.snapshot(for: nil) else { return }
-            self.replyEncoded(PanelStateEnvelope(snapshot: snapshot), reply: reply)
-        }
     }
 
     private func replyEncoded<T: Encodable>(_ value: T, reply: @escaping (String) -> Void) {
@@ -890,37 +721,6 @@ final class RemoteChatServer {
         }
         if dispatch.shouldPushSnapshotForFocus {
             pushFocusedSnapshot(connectionID: connectionID, connection: connection)
-        }
-    }
-
-    private func processWebRTCCommand(
-        _ command: Command,
-        connectionId: Int,
-        isDraftCommand: Bool,
-        reply: @escaping (String) -> Void
-    ) async {
-        let focusedSessionID = queue.sync { webRTCFocusStates[connectionId]?.focusedSessionID }
-        let dispatch = await MainActor.run { () -> RemoteChatCommandRouter.Dispatch? in
-            guard let pipeline = vncPipeline else { return nil }
-            return pipeline.router.route(command, focusedSessionID: focusedSessionID)
-        }
-        guard let dispatch else {
-            print("[RemoteChatServer] webRTC command rejected connectionId=\(connectionId) op=\(command.op.rawValue) reason=pipelineNotReady")
-            replyEncoded(
-                CommandAck(commandId: command.commandId, status: .error, message: "remote panel is not ready", sessionId: command.sessionId),
-                reply: reply
-            )
-            return
-        }
-        if dispatch.shouldUpdateFocusedSessionID {
-            queue.sync {
-                webRTCFocusStates[connectionId]?.focusedSessionID = dispatch.newFocusedSessionID
-                webRTCFocusStates[connectionId]?.isResolvingDraftSession = isDraftCommand
-            }
-        }
-        replyEncoded(dispatch.ack, reply: reply)
-        if dispatch.shouldPushSnapshotForFocus {
-            pushWebRTCFocusedSnapshot(connectionId: connectionId, reply: reply)
         }
     }
 
@@ -1086,18 +886,10 @@ final class RemoteChatServer {
         )
     }
 
-    private func backendConnectionID(from request: RemoteChatHTTPRequest) -> String? {
-        let rawValue = request.queryItems["connection_id"] ?? request.headers["x-remote-connection-id"]
-        let value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return value.isEmpty ? nil : value
-    }
-
     private func diagnosticsSnapshotLocked() -> RemoteChatServerDiagnostics {
         RemoteChatServerDiagnostics(
             activeWebSocketCount: webSocketConnections.count,
-            localWebSocketIDs: webSocketConnections.keys.map(\.uuidString).sorted(),
-            remoteConnectionIDs: webSocketRemoteConnectionIDs.values.sorted(),
-            latestRemoteConnectionID: latestRemoteConnectionID
+            localWebSocketIDs: webSocketConnections.keys.map(\.uuidString).sorted()
         )
     }
 
@@ -1108,13 +900,11 @@ final class RemoteChatServer {
     private func removeWebSocketConnection(_ id: UUID) {
         queue.async { [weak self] in
             guard let self else { return }
-            let remoteConnectionID = self.webSocketRemoteConnectionIDs[id]
             self.webSocketConnections.removeValue(forKey: id)
-            self.webSocketRemoteConnectionIDs.removeValue(forKey: id)
             self.connectionStates.removeValue(forKey: id)
             self.inboundTaskByConnection[id]?.cancel()
             self.inboundTaskByConnection.removeValue(forKey: id)
-            print("RemoteChatServer closed ws_id=\(id.uuidString) connection_id=\(remoteConnectionID ?? "none")")
+            print("RemoteChatServer closed ws_id=\(id.uuidString)")
             self.notifyDiagnosticsChangedLocked()
         }
     }

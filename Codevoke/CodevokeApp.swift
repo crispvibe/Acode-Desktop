@@ -8,13 +8,8 @@ struct CodevokeApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var modelService = ChatModelService()
     @StateObject private var chatRuntimeStore = ChatRuntimeStore()
-    @StateObject private var deviceProvisioning: DeviceProvisioningViewModel
-    @StateObject private var accountAuth: AccountAuthViewModel
 
     init() {
-        let deviceProvisioning = DeviceProvisioningViewModel()
-        _deviceProvisioning = StateObject(wrappedValue: deviceProvisioning)
-        _accountAuth = StateObject(wrappedValue: AccountAuthViewModel(deviceProvisioning: deviceProvisioning))
         UserDefaults.standard.set(false, forKey: "NSQuitAlwaysKeepsWindows")
         _ = signal(SIGPIPE, SIG_IGN)
     }
@@ -25,14 +20,11 @@ struct CodevokeApp: App {
                 .environmentObject(appState)
                 .environmentObject(modelService)
                 .environmentObject(chatRuntimeStore)
-                .environmentObject(deviceProvisioning)
-                .environmentObject(accountAuth)
                 .background(WindowConfigurator())
                 .onAppear {
                     RemoteVNCWiring.install(runtimeStore: chatRuntimeStore, appState: appState, modelService: modelService)
                     triggerModelFetch()
                     appState.showFolderPermissionOnboardingIfNeeded()
-                    Task { await accountAuth.bootstrap() }
                 }
                 .onChange(of: appState.settings.apiBaseURL) { _, _ in triggerModelFetch() }
                 .onChange(of: appState.settings.apiKey) { _, _ in triggerModelFetch() }
@@ -72,8 +64,6 @@ struct CodevokeApp: App {
                 .environmentObject(appState)
                 .environmentObject(modelService)
                 .environmentObject(chatRuntimeStore)
-                .environmentObject(deviceProvisioning)
-                .environmentObject(accountAuth)
         }
     }
 
