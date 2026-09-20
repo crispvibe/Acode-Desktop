@@ -9,9 +9,8 @@ local.properties
 .gradle/
 .build/
 .kotlin/
-AcodeIOS/build-archive/
-CodevokeIOS/build-archive/
-CodevokeIOS/build/
+iOS版本/build-archive/
+iOS版本/build/
 build-archive/
 
 # JS dependencies and build output

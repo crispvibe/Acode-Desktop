@@ -6,9 +6,12 @@ acode 是一个开源的 AI 编程工作台：在电脑上管理项目、浏览�
 
 **纯局域网直连 · 无账号 · 无后端 · 无云端依赖 —— 打开就能用。**
 
+仓库地址：<https://github.com/crispvibe/Acode-Desktop>
+QQ 交流群：[Code 开源技术交流群](https://qm.qq.com/q/yauE2vZ73y)
+
 <p align="center">
-  <img src="docs/images/desktop-chat.png" alt="acode 电脑端：工具卡片对话" width="68%" />
-  <img src="docs/images/mobile-chat.png" alt="acode 手机端界面示意" width="27%" />
+  <img src="文档/images/desktop-chat.png" alt="acode 电脑端：工具卡片对话" width="68%" />
+  <img src="文档/images/mobile-chat.png" alt="acode 手机端界面示意" width="27%" />
 </p>
 
 ## 为什么用 acode
@@ -26,7 +29,7 @@ acode 是一个开源的 AI 编程工作台：在电脑上管理项目、浏览�
 
 | 桌面工作台（项目 + 文件树 + 编辑器 + 对话） | 工具对话（任务清单 / diff / 终端） | 手机端（示意） |
 | :---: | :---: | :---: |
-| ![桌面工作台](docs/images/desktop-editor.png) | ![工具卡片](docs/images/desktop-tools.png) | ![手机端](docs/images/mobile-chat.png) |
+| ![桌面工作台](文档/images/desktop-editor.png) | ![工具卡片](文档/images/desktop-tools.png) | ![手机端](文档/images/mobile-chat.png) |
 
 ## 快速开始
 
@@ -35,15 +38,15 @@ acode 是一个开源的 AI 编程工作台：在电脑上管理项目、浏览�
 **macOS**（需要 macOS 14+，Xcode 15/16）：
 
 ```bash
-open Codevoke.xcodeproj          # 用 Xcode 打开并运行
+open "Mac版本/Codevoke.xcodeproj"    # 用 Xcode 打开并运行
 # 或命令行构建：
-xcodebuild -project Codevoke.xcodeproj -scheme Codevoke -configuration Debug build
+xcodebuild -project "Mac版本/Codevoke.xcodeproj" -scheme Codevoke -configuration Debug build
 ```
 
 **Windows**（需要 Node.js 20+）：
 
 ```bash
-cd Windows
+cd Windows版本
 npm install
 npm run dev                    # Electron 开发模式
 # 或打包安装包：npm run dist:win
@@ -56,13 +59,13 @@ npm run dev                    # Electron 开发模式
 **Android**：
 
 ```bash
-cd Android && ./gradlew assembleDebug   # 生成 app-debug.apk 安装
+cd 安卓版本 && ./gradlew assembleDebug   # 生成 app-debug.apk 安装
 ```
 
 **iOS**：
 
 ```bash
-open CodevokeIOS/Codevoke.xcodeproj     # Xcode 构建到真机/模拟器
+open "iOS版本/Codevoke.xcodeproj"        # Xcode 构建到真机/模拟器
 ```
 
 手机与电脑连同一 Wi-Fi，应用会自动扫描局域网里的 acode host，点击即连；扫描不到就在连接页手动输入电脑的 `IP:18765`。
@@ -73,11 +76,14 @@ open CodevokeIOS/Codevoke.xcodeproj     # Xcode 构建到真机/模拟器
 
 | 平台 | 角色 | 目录 |
 | --- | --- | --- |
-| macOS（SwiftUI 原生） | 工作台 + 局域网 host | `Codevoke/` |
-| Windows（Electron + React + TS） | 工作台 + 局域网 host | `Windows/` |
-| iOS（SwiftUI） | 移动端客户端 | `CodevokeIOS/` |
-| Android（Kotlin + Compose） | 移动端客户端 | `Android/` |
-| 共享聊天核心 / UI（SwiftPM） | macOS/iOS 共用 | `Shared/` |
+| macOS（SwiftUI 原生） | 工作台 + 局域网 host | `Mac版本/` |
+| Windows（Electron + React + TS） | 工作台 + 局域网 host | `Windows版本/` |
+| iOS（SwiftUI） | 移动端客户端 | `iOS版本/` |
+| Android（Kotlin + Compose） | 移动端客户端 | `安卓版本/` |
+| 共享聊天核心 / UI（SwiftPM） | macOS/iOS 共用 | `共享代码/` |
+| 文档 / 截图 | 协议、打包、设计说明 | `文档/` |
+| 辅助脚本 | 打包 / 图标 / 验证 | `脚本/` |
+| UI 设计稿 | 连接页 / Android 基准 / 官网 | `设计图/` |
 
 ## 连接模型
 
@@ -85,25 +91,35 @@ open CodevokeIOS/Codevoke.xcodeproj     # Xcode 构建到真机/模拟器
 - `WS /chat` —— 面板镜像通道：host 推送 `PanelStateEnvelope`（snapshot/patch），客户端回发 `command`，host 回 `command_ack`。
 - `POST /attachments` —— 聊天附件直传。
 
-协议细节见 `docs/remote-chat-v2-protocol.md`、`docs/remote-chat-vnc-refactor.md`。
+协议细节见 `文档/remote-chat-v2-protocol.md`、`文档/remote-chat-vnc-refactor.md`。
 
 ## macOS 打包签名（可选）
 
 ```bash
 CODEVOKE_SIGNING_AUTHORITY="Developer ID Application: Your Name (TEAMID)" \
 CODEVOKE_TEAM_ID="TEAMID" \
-scripts/package-macos-app.sh
+脚本/package-macos-app.sh
 ```
 
-`NOTARIZE=1` 可触发公证流程（需先配置 `codevoke-notary` keychain profile，见 `docs/macos-notarization.md`）。
+`NOTARIZE=1` 可触发公证流程（需先配置 `codevoke-notary` keychain profile，见 `文档/macos-notarization.md`）。
 
 ## 文档
 
-- `docs/` —— 协议说明、macOS 打包/公证、历史重构记录
-- `Windows/README.md`、`Windows/docs/architecture.md` —— Windows 端架构
-- `Android/DESIGN.md` —— Android 端设计说明
+- `文档/` —— 协议说明、macOS 打包/公证、历史重构记录
+- `Windows版本/README.md`、`Windows版本/docs/architecture.md` —— Windows 端架构
+- `安卓版本/DESIGN.md` —— Android 端设计说明
 - `CHANGELOG.md` —— 版本记录
+
+## 许可协议
+
+**acode 仅供个人非商业使用，禁止商用。**
+
+- ✅ 允许：个人使用、学习、研究、二次开发、非营利组织使用
+- ❌ 禁止：出售、收费服务、公司内部生产使用、嵌入商业产品等一切商业用途
+- 分发或修改后再发布时，必须附带 [LICENSE](LICENSE) 全文与版权声明
+
+协议采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)，详见 [LICENSE](LICENSE)。
 
 ## License
 
-[MIT](LICENSE)
+[PolyForm Noncommercial 1.0.0](LICENSE) · © 2026 crispvibe · [Acode-Desktop](https://github.com/crispvibe/Acode-Desktop) · QQ 群：[Code 开源技术交流群](https://qm.qq.com/q/yauE2vZ73y)

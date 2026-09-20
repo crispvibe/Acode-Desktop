@@ -1,6 +1,6 @@
 # Android Compose 设计基准
 
-用途：这个目录用于 Android 原生 Kotlin + Compose 还原 iOS acode 的视觉和交互，不作为方案文档。Android 端稳定设计规范沉淀在 `/Users/oreo/Desktop/Codevoke/Android/DESIGN.md`。
+用途：这个目录用于 Android 原生 Kotlin + Compose 还原 iOS acode 的视觉和交互，不作为方案文档。Android 端稳定设计规范沉淀在 `安卓版本/DESIGN.md`。
 
 ## 截图
 
@@ -8,29 +8,22 @@
 - `screenshots/02-remote-device-list.png`：远程设备页。
 - `screenshots/03-chat-thread.png`：聊天消息流。
 - `screenshots/04-chat-thread-duplicate-reference.png`：聊天消息流补充参考。
-- `screenshots/05-login.png`：登录页。
-- `screenshots/06-register.png`：创建账号页。
 
 ## 已落地到 Android 的页面
 
 - 聊天主屏：顶部玻璃栏、消息列表、黑色用户气泡、底部输入栏、左侧抽屉。
 - 远程设备页：标题栏、分段控件、设备卡片、输入设备码卡片。
 - 设置页：三组玻璃卡片、菜单行、图标、分隔线。
-- 登录页：品牌图标、邮箱/密码输入、协议勾选、登录按钮、忘记密码/创建账号入口。
-- 创建账号页：返回按钮、品牌图标、邮箱/密码/确认密码输入、协议勾选、注册并登录按钮。
 
 ## iOS 证据
 
-- 色彩、玻璃、圆角、阴影：`CodevokeIOS/Codevoke/Views/VisualStyle.swift`
-- 聊天顶部栏、消息列表、空态、底部输入栏：`CodevokeIOS/Codevoke/Views/ChatView.swift`
-- 输入框、附件按钮、发送按钮：`CodevokeIOS/Codevoke/Views/InputBarView.swift`
-- 左侧抽屉：`CodevokeIOS/Codevoke/Views/SidebarView.swift`
-- 侧栏遮罩、宽度、边缘手势：`CodevokeIOS/Codevoke/Views/RootView.swift`
-- 远程设备：`CodevokeIOS/Codevoke/Views/DeviceListView.swift`
-- 设置页：`CodevokeIOS/Codevoke/Views/SettingsView.swift`
-- 登录/注册：`CodevokeIOS/Codevoke/Views/Auth/LoginView.swift`、`CodevokeIOS/Codevoke/Views/Auth/RegisterView.swift`
-- 登录/注册公共组件：`CodevokeIOS/Codevoke/Views/Auth/AuthComponents.swift`
-- 登录/注册/法律文档接口：`CodevokeIOS/Codevoke/ViewModels/AuthViewModel.swift`、`CodevokeIOS/Codevoke/Networking/RemoteAuthClient.swift`、`CodevokeIOS/Codevoke/Networking/RemoteLegalClient.swift`
+- 色彩、玻璃、圆角、阴影：`iOS版本/Codevoke/Codevoke/Views/VisualStyle.swift`
+- 聊天顶部栏、消息列表、空态、底部输入栏：`iOS版本/Codevoke/Codevoke/Views/ChatView.swift`
+- 输入框、附件按钮、发送按钮：`iOS版本/Codevoke/Codevoke/Views/InputBarView.swift`
+- 左侧抽屉：`iOS版本/Codevoke/Codevoke/Views/SidebarView.swift`
+- 侧栏遮罩、宽度、边缘手势：`iOS版本/Codevoke/Codevoke/Views/RootView.swift`
+- 远程设备：`iOS版本/Codevoke/Codevoke/Views/DeviceListView.swift`
+- 设置页：`iOS版本/Codevoke/Codevoke/Views/SettingsView.swift`
 
 ## 还原硬规则
 
@@ -45,10 +38,10 @@
 
 ## Compose Token 落点
 
-- 颜色：`Android/app/src/main/java/com/acode/android/ui/theme/CodevokeTheme.kt` 的 `CodevokeColor`。
-- 圆角/间距/尺寸/字号/透明度/阴影/动效：`Android/app/src/main/java/com/acode/android/ui/theme/CodevokeTokens.kt`。
-- 背景、玻璃卡片、圆形按钮：`Android/app/src/main/java/com/acode/android/ui/components/CodevokeSurfaces.kt`。
-- 设置行、主按钮、状态点、分段控件：`Android/app/src/main/java/com/acode/android/ui/components/CodevokeRows.kt`。
+- 颜色：`安卓版本/app/src/main/java/com/codevoke/android/ui/theme/CodevokeTheme.kt` 的 `CodevokeColor`。
+- 圆角/间距/尺寸/字号/透明度/阴影/动效：`安卓版本/app/src/main/java/com/codevoke/android/ui/theme/CodevokeTokens.kt`。
+- 背景、玻璃卡片、圆形按钮：`安卓版本/app/src/main/java/com/codevoke/android/ui/components/CodevokeSurfaces.kt`。
+- 设置行、主按钮、状态点、分段控件：`安卓版本/app/src/main/java/com/codevoke/android/ui/components/CodevokeRows.kt`。
 
 ## iOS -> Android Token 对照
 
@@ -65,7 +58,7 @@
 
 ## 后续页面实现要求
 
-- 写 screen 前先读 `/Users/oreo/Desktop/Codevoke/Android/DESIGN.md`。
+- 写 screen 前先读 `安卓版本/DESIGN.md`。
 - screen 里不要继续散写全局 magic number；优先用 `CodevokeColor`、`CodevokeRadius`、`CodevokeSpace`、`CodevokeSize`、`CodevokeType`、`CodevokeAlpha`。
 - 新增公共视觉值必须先沉淀到 token，再在组件或 screen 使用。
 - 截图负责视觉位置感，iOS 源码负责精确透明度、圆角、字号和交互值。

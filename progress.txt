@@ -1,4 +1,0 @@
-2026-05-14 13:58  phase-0 done  no-commit  Codex notification 噪声过滤与 iOS 兜底过滤已落地
-2026-05-14 13:58  phase-1 done  no-commit  新增 Shared ChatCore，共享消息模型和过滤器并接入 Mac/iOS
-2026-05-14 13:12  phase-2 done  no-commit  新增 Shared ChatUI，并让 Mac/iOS 基础消息行接入共享气泡与通用工具行
-2026-05-14 13:55  phase-3 done  no-commit  Mac/iOS 接入 Shared ChatUI 高级工具卡，拆分 ClaudeSessionPanelView 到 3000 行以内并完成两端构建验证

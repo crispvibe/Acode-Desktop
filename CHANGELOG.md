@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.4.0 · acode 收尾整理
+
+发布日期：2026-09-20
+
+- **目录中文化**：`Mac版本/`（macOS host）、`Windows版本/`（Electron host）、`iOS版本/`、`安卓版本/`、`共享代码/`（SwiftPM ChatCore/ChatUI）、`文档/`、`脚本/`、`设计图/`。
+- **品牌统一**：补齐遗漏的用户可见 Codevoke 文案为 acode（iOS/Android 关于页、macOS 权限弹窗与提示、/health 服务名）。
+- **许可变更**：MIT → PolyForm Noncommercial 1.0.0，仅限个人非商业使用，禁止商用；四端"关于"页加入版权与许可说明。
+- **清理**：删除旧账号体系相关文档与设计图（登录/注册设计图、三份旧体系审计报告、Windows 交接文档、progress.txt）。
+- **仓库**：更名为 `crispvibe/Acode-Desktop`。
+
 ## 0.3.0 · 开源化 + 纯局域网
 
 发布日期：2026-09-20
@@ -9,7 +19,7 @@
 - **删除后端**：`后端/`（Go API + 信令 + 管理后台）整体移除，仓库不再依赖任何云端服务。
 - **去认证**：账号登录、设备码、连接审批、transient token、Bearer 鉴权全部移除；同局域网任何设备可直接连入 host（`ws://host:18765/chat`）。
 - **纯局域网直连**：隧道（tunnel）/ WebRTC / 信令中转链路全部删除；客户端通过子网 `/health` 扫描发现 host，支持手动输入 `host:port` 并记住上次连接。
-- **开源化**：MIT License；清理已提交的 `node_modules`/`dist` 产物与个人标识（bundle id、签名证书、域名引用）。
+- **开源化**：PolyForm Noncommercial 1.0.0（仅限个人非商业使用，禁止商用）；清理已提交的 `node_modules`/`dist` 产物与个人标识（bundle id、签名证书、域名引用）。
 
 ### 各端
 
