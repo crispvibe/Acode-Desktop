@@ -12,8 +12,8 @@ android {
         applicationId = "com.codevoke.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.5.0"
+        versionCode = 3
+        versionName = "0.5.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // 真机调试包只保留 arm64，显著减小 APK 体积，降低微信传输损坏概率。
