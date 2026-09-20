@@ -67,6 +67,15 @@ macOS 包是 Developer ID 签名但未公证，用户右键打开即可，这是
 rm -rf build/ Windows版本/release/
 ```
 
+**同时停掉构建残留进程**——打完包这些还在后台吃内存/CPU，必须停：
+
+```bash
+cd 安卓版本 && JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew --stop   # Gradle daemon + Kotlin daemon（最占内存的就是它）
+pkill -f "GradleDaemon" 2>/dev/null; pkill -f "KotlinCompileDaemon" 2>/dev/null
+```
+
+其他按需查：`ps aux | grep -E "java|node|electron-builder|xcodebuild" | grep -v grep`，看到本项目残留的 java/node 进程一并杀掉。Xcode 的 DerivedData 进程会自己退，不用管。
+
 ### 5. 收尾
 
 - `CHANGELOG.md` 把「未发布」段落改成 `## X.Y.Z` + 日期
