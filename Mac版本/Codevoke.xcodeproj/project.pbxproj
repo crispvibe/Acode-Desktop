@@ -702,11 +702,11 @@
 /* Begin XCLocalSwiftPackageReference section */
 		CHC000000000000000000002 /* XCLocalSwiftPackageReference "../共享代码/ChatCore" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../共享代码/ChatCore;
+			relativePath = "../共享代码/ChatCore";
 		};
 		CHU000000000000000000002 /* XCLocalSwiftPackageReference "../共享代码/ChatUI" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../共享代码/ChatUI;
+			relativePath = "../共享代码/ChatUI";
 		};
 /* End XCLocalSwiftPackageReference section */
 

@@ -21,3 +21,4 @@ dist/
 后端/
 *.exe
 *.log
+release产物/
