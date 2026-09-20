@@ -348,6 +348,9 @@ final class ChatViewModel: ObservableObject {
         clearPendingFocusedSessionId()
         pendingProjectFocusId = selectedProjectId
         focusedSessionId = nil
+        // 草稿面板是"新上下文"：清掉上一个会话的 recovered 指向，否则草稿
+        // snapshot 到达时 displayMessages 会把旧会话的历史消息贴出来。
+        recoveredSelectedSessionId = nil
         persistRemoteFocus(projectId: selectedProjectId, sessionId: nil)
         schedulePendingProjectFocusTimeout(projectId: selectedProjectId)
         sendCommand(Command(op: .focusProject, args: CommandArgs(projectId: selectedProjectId)))
@@ -436,7 +439,7 @@ final class ChatViewModel: ObservableObject {
         // 更新版本通过 handleEnvelope 覆盖。
         if let cached = mirror.snapshot(for: session.id) {
             currentSnapshot = cached
-            bumpMessageListSignalIfChanged(messages: cached.messages)
+            bumpMessageListSignalIfChanged(messages: displayMessages(snapshot: cached))
             bumpStreamingTextSignalIfChanged(streamingTexts: cached.streamingTexts)
         }
         sendCommand(Command(op: .focusSession, sessionId: session.id, args: CommandArgs(sessionId: session.id)))
@@ -897,15 +900,43 @@ final class ChatViewModel: ObservableObject {
     /// 当前面板派生属性。view 直接读 currentSnapshot 也行；这些便捷属性少几行模板。
     var messages: [ChatMessage] { displayMessages(snapshot: currentSnapshot) }
     private func displayMessages(snapshot: PanelStateSnapshot?) -> [ChatMessage] {
-        let expectedSessionId = recoveredSelectedSessionId ?? pendingFocusedSessionId ?? focusedSessionId
+        // pendingFocusedSessionId 是用户最新意图，必须先于 recoveredSelectedSessionId
+        // —— 后者可能还指着上一个会话，若先取它，切会话窗口内会把旧会话的
+        // recovered 消息/空数组显示出来，mirror 里新会话的缓存 snapshot 反被遮蔽。
+        let expectedSessionId = pendingFocusedSessionId ?? recoveredSelectedSessionId ?? focusedSessionId
         if let expectedSessionId {
-            let snapshotSessionId = snapshot?.currentSessionId ?? snapshot?.sessionId
+            // snapshot.sessionId 是这份面板的日志归属；currentSessionId 只是
+            // server 当时的焦点标记。判定"这是谁的消息"以 sessionId 为准。
+            let snapshotSessionId = snapshot?.sessionId ?? snapshot?.currentSessionId
             if snapshotSessionId == expectedSessionId, let snapshot {
-                return snapshot.messages
+                return mergedDisplayMessages(snapshot: snapshot, sessionId: expectedSessionId)
             }
             return recoveredMessagesBySessionId[expectedSessionId] ?? []
         }
         return snapshot?.messages ?? []
+    }
+
+    /// snapshot.messages 服务端封顶 120 条/512KB（PanelStateSnapshotBuilder），
+    /// 更早的历史经 recovery 分页写入 recoveredMessagesBySessionId。
+    /// 展示 = recovered 中 snapshot 之前的重叠前缀 + snapshot.messages（server 权威），
+    /// 否则"上滑加载更早消息"加载了分页却永远不显示。
+    private func mergedDisplayMessages(snapshot: PanelStateSnapshot, sessionId: UUID) -> [ChatMessage] {
+        let recovered = recoveredMessagesBySessionId[sessionId] ?? []
+        guard !recovered.isEmpty, !snapshot.messages.isEmpty else { return snapshot.messages }
+        // recovered 是按时间顺序的连续链（初始页=snapshot 窗口，之后向上翻页
+        // prepend），snapshot 窗口覆盖其尾部 —— 以 snapshot 首条在 recovered
+        // 中的位置为锚点，把锚点之前的历史前置。
+        if let firstSnapshotId = snapshot.messages.first?.id,
+           let overlapIndex = recovered.firstIndex(where: { $0.id == firstSnapshotId }) {
+            return Array(recovered.prefix(overlapIndex)) + snapshot.messages
+        }
+        // 无锚点（窗口中间还有未拉取的页）：recovered 尾部仍不晚于 snapshot
+        // 头部时按时间顺序前置；否则视为脏数据丢弃，只用 server 权威窗口。
+        if let recoveredTail = recovered.last, let snapshotHead = snapshot.messages.first,
+           recoveredTail.createdAt <= snapshotHead.createdAt {
+            return recovered + snapshot.messages
+        }
+        return snapshot.messages
     }
 
     var messageRows: [ChatMessageListRow] {
@@ -1012,7 +1043,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     var selectedSession: PanelSessionDTO? {
-        if let id = recoveredSelectedSessionId ?? pendingFocusedSessionId ?? focusedSessionId,
+        if let id = pendingFocusedSessionId ?? recoveredSelectedSessionId ?? focusedSessionId,
            let session = sessions.first(where: { $0.id == id }) {
             return session
         }
@@ -1687,7 +1718,7 @@ final class ChatViewModel: ObservableObject {
             //    或 server 已经发过），先把缓存里的内容贴出来给用户看，别空白。
             else if let cached = mirror.snapshot(for: pendingFocusedSessionId) {
                 currentSnapshot = cached
-                bumpMessageListSignalIfChanged(messages: cached.messages)
+                bumpMessageListSignalIfChanged(messages: displayMessages(snapshot: cached))
                 bumpStreamingTextSignalIfChanged(streamingTexts: cached.streamingTexts)
                 return
             } else {
@@ -1734,7 +1765,7 @@ final class ChatViewModel: ObservableObject {
                 await self?.loadFilesIfPossible(projectId: pendingProjectFocusId, path: "")
             }
         }
-        bumpMessageListSignalIfChanged(messages: snapshot.messages)
+        bumpMessageListSignalIfChanged(messages: displayMessages(snapshot: snapshot))
         bumpStreamingTextSignalIfChanged(streamingTexts: snapshot.streamingTexts)
         // 收到 snapshot 后，如果用户还没看到任何文件,自动用当前选中的项目
         // (snapshot 推导出来或第一个项目)拉一次根目录。节流避免重复请求。

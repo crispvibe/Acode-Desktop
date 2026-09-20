@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Base64
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -193,7 +194,10 @@ fun ChatScreen(
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(5)) { uris ->
         uris.forEach { uri ->
             scope.launch {
-                prepareUriAttachment(context, uri, imageHint = true)?.let { prepared ->
+                val prepared = prepareUriAttachment(context, uri, imageHint = true)
+                if (prepared == null) {
+                    Toast.makeText(context, "附件超过大小限制（图片 20MB / 文件 10MB）或无法读取。", Toast.LENGTH_SHORT).show()
+                } else {
                     uploadAttachment(prepared.filename, prepared.data, prepared.kind, prepared.thumbnailData)
                 }
             }
@@ -202,7 +206,10 @@ fun ChatScreen(
     val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         uris.forEach { uri ->
             scope.launch {
-                prepareUriAttachment(context, uri, imageHint = false)?.let { prepared ->
+                val prepared = prepareUriAttachment(context, uri, imageHint = false)
+                if (prepared == null) {
+                    Toast.makeText(context, "附件超过大小限制（图片 20MB / 文件 10MB）或无法读取。", Toast.LENGTH_SHORT).show()
+                } else {
                     uploadAttachment(prepared.filename, prepared.data, prepared.kind, prepared.thumbnailData)
                 }
             }
@@ -1218,11 +1225,24 @@ private data class PreparedAttachment(
     val thumbnailData: String?,
 )
 
+private const val MAX_ATTACHMENT_SOURCE_BYTES = 10L * 1024 * 1024
+private const val MAX_IMAGE_SOURCE_BYTES = 20L * 1024 * 1024
+
 private suspend fun prepareUriAttachment(context: Context, uri: Uri, imageHint: Boolean): PreparedAttachment? = withContext(Dispatchers.IO) {
     val resolver = context.contentResolver
     val name = displayName(context, uri) ?: "attachment"
-    val raw = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
     val isImage = imageHint || isImageFilename(name)
+    // 内存安全：先按声明大小拦截，再做有界读取兜底。直接 readBytes() 会把
+    // 整个文件一次性搬进内存 —— 用户选个几百 MB 的文件直接 OOM。
+    // 上限与 iOS 对齐：非图片 10MB（反正超过会被 ViewModel 拒收）、
+    // 图片源文件 20MB（压缩后的大小由 ViewModel 再判一次）。
+    val limitBytes = if (isImage) MAX_IMAGE_SOURCE_BYTES else MAX_ATTACHMENT_SOURCE_BYTES
+    declaredSize(context, uri)?.let { declared ->
+        if (declared > limitBytes) return@withContext null
+    }
+    val raw = resolver.openInputStream(uri)?.use { input -> input.readBounded(limitBytes + 1) }
+        ?: return@withContext null
+    if (raw.size.toLong() > limitBytes) return@withContext null
     if (!isImage) {
         return@withContext PreparedAttachment(filename = name, data = raw, kind = "file", thumbnailData = null)
     }
@@ -1233,6 +1253,32 @@ private suspend fun prepareUriAttachment(context: Context, uri: Uri, imageHint: 
         kind = "image",
         thumbnailData = thumbnailBase64(raw),
     )
+}
+
+/** provider 声明的文件大小（OpenableColumns.SIZE）；查不到返回 null。 */
+private fun declaredSize(context: Context, uri: Uri): Long? = runCatching {
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (index >= 0 && !cursor.isNull(index)) cursor.getLong(index) else null
+        } else {
+            null
+        }
+    }
+}.getOrNull()
+
+/** 最多读 maxBytes 字节 —— minSdk 26 没有 InputStream.readNBytes，手写等效实现。 */
+private fun java.io.InputStream.readBounded(maxBytes: Long): ByteArray {
+    val out = ByteArrayOutputStream()
+    val chunk = ByteArray(64 * 1024)
+    var remaining = maxBytes
+    while (remaining > 0) {
+        val read = read(chunk, 0, minOf(chunk.size.toLong(), remaining).toInt())
+        if (read < 0) break
+        out.write(chunk, 0, read)
+        remaining -= read
+    }
+    return out.toByteArray()
 }
 
 private suspend fun prepareBitmapAttachment(bitmap: Bitmap): PreparedAttachment = withContext(Dispatchers.Default) {

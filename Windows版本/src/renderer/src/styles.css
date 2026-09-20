@@ -3660,31 +3660,6 @@ button:disabled,
   color: #b64343;
 }
 
-.segmented {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px;
-  height: 38px;
-  padding: 5px;
-  border: 1px solid var(--hairline);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.62);
-}
-
-.segmented button {
-  border: 0;
-  border-radius: 13px;
-  background: transparent;
-  cursor: pointer;
-  color: #77777d;
-  font-weight: 760;
-}
-
-.segmented button.active {
-  background: rgba(65, 118, 220, 0.13);
-  color: #2f3036;
-}
-
 .settings-textarea {
   width: 100%;
   min-height: 322px;

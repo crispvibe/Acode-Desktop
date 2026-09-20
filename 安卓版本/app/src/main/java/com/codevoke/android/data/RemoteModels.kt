@@ -319,6 +319,10 @@ fun JSONObject.toPanelPatch(): RemotePanelPatch = RemotePanelPatch(
 )
 
 fun RemotePanelSnapshot.applyPatch(patch: RemotePanelPatch): RemotePanelSnapshot? {
+    // patch 链按 sessionId 分 channel：其它会话的 patch 即使 baseRevision
+    // 巧合相等也不能并进当前面板 —— 否则会把外会话的消息/状态贴到当前会话上
+    // （iOS PanelStateMirror 按 sessionId 分桶，语义一致）。
+    if (patch.sessionId != sessionId) return null
     if (patch.baseRevision != revision) return null
     return copy(
         revision = patch.revision,

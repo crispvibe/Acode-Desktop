@@ -2,38 +2,39 @@
 
 [中文](README.md) · **English**
 
-> Mobile AI coding — put Claude Code / Codex in your pocket.
+> AI coding remote control on your phone — Claude Code / Codex in your pocket.
 
-An open-source AI coding workbench with LAN + cross-network direct connect: run Claude Code / Codex conversations on your computer, then drive them from your phone — auto-discovery on the same Wi-Fi, QR pairing across networks. **No accounts, no backend, no cloud** — just open it and go.
+acode is a **free and open-source** AI coding workbench: the AI runs on your computer, and your phone connects to drive it from anywhere. Auto-discovery on the same Wi-Fi, QR pairing across networks — data stays between your two devices.
 
-Repo: <https://github.com/crispvibe/Acode-Desktop> · License: [PolyForm Noncommercial 1.0.0](LICENSE) (free for personal use, no commercial use)
+Repo: <https://github.com/crispvibe/Acode-Desktop> · QQ group: [1076321843](https://qm.qq.com/q/yauE2vZ73y) · License: [PolyForm Noncommercial 1.0.0](LICENSE) (free for personal use, no commercial use)
 
 <p align="center">
-  <img src="文档/images/desktop-chat.png" alt="acode desktop" width="64%" />
-  <img src="文档/images/mobile-thread.png" alt="acode mobile" width="31%" />
+  <img src="文档/images/desktop-chat.png" alt="acode desktop" width="96%" />
+</p>
+<p align="center">
+  <img src="文档/images/mobile-thread.png" alt="acode mobile · conversation" width="42%" />
+  <img src="文档/images/mobile-drawer.png" alt="acode mobile · session list" width="42%" />
 </p>
 
 ## Download
 
-| Platform | Package (direct link to the latest GitHub Release) |
-|----------|----------------------------------------------------|
-| macOS | [acode-macos-universal.dmg](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-macos-universal.dmg) |
-| Windows | [Installer / Portable](https://github.com/crispvibe/Acode-Desktop/releases/latest) (`acode-Setup-*-x64.exe` installer / `acode-Portable-*-x64.exe` portable) |
-| Android | [acode-android-debug.apk](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-android-debug.apk) |
-| iOS | [acode-ios-unsigned.ipa](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-ios-unsigned.ipa) (unsigned IPA — install via TrollStore or sideload with your own certificate) |
+Pick the desktop build that matches your chip; all artifacts are on the [latest Releases page](https://github.com/crispvibe/Acode-Desktop/releases/latest).
 
-All builds are on the [latest Releases page](https://github.com/crispvibe/Acode-Desktop/releases/latest); Windows filenames carry a version number — if a direct link stops working, grab the package there.
+| Platform | Download | Which one |
+|----------|----------|-----------|
+| macOS | [Apple Silicon](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-macos-arm64.dmg) · [Intel](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-macos-x64.dmg) | Apple Silicon for M-chip Macs (2020 and later); Intel for older Macs |
+| Windows | [Installer / Portable](https://github.com/crispvibe/Acode-Desktop/releases/latest) | `Setup-*-x64.exe` for most PCs; `*-arm64.exe` for Snapdragon / ARM devices; `Portable-*` runs without installing |
+| Android | [acode-android-debug.apk](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-android-debug.apk) | install directly |
+| iOS | [acode-ios-unsigned.ipa](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-ios-unsigned.ipa) | unsigned IPA — install via TrollStore or sign it yourself |
 
 ## What it does
 
-- 📱 **Drive desktop AI from your phone**: send tasks, watch progress, approve permissions, answer the agent's questions — keep AI coding while you're away from the desk
-- 🔌 **Zero-config connect**: auto-discovers the host on the same Wi-Fi; or enter `IP:18765` manually — cross-network direct connect (IPv6 / port mapping + QR pairing) is supported
-- 🛠 **See every step**: task lists, file reads, search, diffs, terminal commands, sub-agents — each rendered as its own card
-- ⚡ **All mainstream CLIs**: Claude Code, Codex, Cursor Agent, Gemini, Qwen Code, Copilot, Kimi, Antigravity, Kiro — switch freely; adjust model and reasoning effort mid-conversation
-- 🔓 **No account system**: no sign-up, no login, nothing goes through the cloud
-- 🖥 **Four platforms**: macOS / Windows as the host, iOS / Android as the client
-
-9 mainstream CLIs are already wired in. Want another (Aider, OpenCode, Goose…)? A PR is one host-side adapter away.
+- 📱 **Drive desktop AI from your phone**: the AI runs on your computer — send tasks, watch progress, approve permissions, answer its questions, even while away from the desk
+- 🔌 **Zero-config connect**: auto-discovers the host on the same Wi-Fi, one tap to connect; on the go, scan a QR code to pair — IPv6 / port-mapping direct connect, no third-party servers
+- 🛠 **See every step**: task lists, file reads, search, diffs, terminal commands, sub-agents — each rendered as a card
+- ⚡ **9 CLIs, switch freely**: Claude Code, Codex, Cursor Agent, Gemini, Qwen Code, Copilot, Kimi, Antigravity, Kiro — model and reasoning effort adjustable mid-conversation
+- � **Free & open source**: free for personal use, all code public — want another CLI (Aider, OpenCode, Goose…)? PRs welcome
+- 🖥 **Four platforms**: macOS / Windows as hosts, iOS / Android as clients
 
 ## Quick start
 
@@ -67,9 +68,9 @@ open "iOS版本/Codevoke.xcodeproj"
 
 ## Cross-network direct connect
 
-Beyond your Wi-Fi, the phone still connects **directly to the computer — no third-party servers**: the host publishes a global IPv6 address or asks the router for a port mapping (NAT-PMP / UPnP); the phone pairs by scanning the QR code in host settings (or pasting the connection string). On the same LAN, a 6-digit pairing code works too.
+Away from your Wi-Fi it still connects **directly — no third-party servers**: the host publishes a global IPv6 address or asks the router for a port mapping (NAT-PMP / UPnP); the phone pairs by scanning the QR code in host settings (or pasting the connection string). On the same LAN, a 6-digit pairing code works too.
 
-If neither side has IPv6 nor a public IPv4, direct connect is impossible and the app says so. Design details: `文档/remote-chat-wan-direct.md`.
+If neither side has IPv6 or a public IPv4, direct connect is impossible and the app says so. Details: `文档/remote-chat-wan-direct.md`.
 
 ## Repository layout
 
@@ -90,7 +91,7 @@ This started as a paid product. After a while it became clear the models of that
 
 The vast majority of the code was written by the author alone — thanks to contributor [@909693mr.zeng](https://github.com/909693) and everyone who sent in suggestions.
 
-If you find it useful, a star means a lot. Chinese-speaking users are welcome in the QQ group: [Code 开源技术交流群](https://qm.qq.com/q/yauE2vZ73y).
+If you find it useful, a star means a lot. Chinese-speaking users are welcome in QQ group [1076321843](https://qm.qq.com/q/yauE2vZ73y).
 
 ## License
 

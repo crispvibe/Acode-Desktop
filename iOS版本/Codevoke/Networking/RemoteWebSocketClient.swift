@@ -72,6 +72,11 @@ final class RemoteWebSocketClient: RemoteTransport {
     /// 心跳间隔，让半死连接快速暴露。
     private static let pingInterval: UInt64 = 20_000_000_000  // 20 s
     private var pingTask: Task<Void, Never>?
+    /// 上一次 ping 的 pong 仍未收到。URLSession 的 sendPing completion 只在
+    /// 拿到 pong 或出错时回调 —— 网络切换造成的 TCP 黑洞会让回调永远不来，
+    /// socket 保持"看似存在"且发送持续排队。到下一次 tick 仍未归位即判死，
+    /// 走 fail → 上层自动重连。仅 MainActor 访问。
+    private var pongPending = false
 
     // 上层回调（仅瘦客户端关心的三类事件）
     var onConnect: (() -> Void)?
@@ -139,6 +144,7 @@ final class RemoteWebSocketClient: RemoteTransport {
     private func disconnect(notify: Bool) {
         intentionallyClosed = true
         isConnected = false
+        pongPending = false
         stopPingLoop()
         _ = bumpEpoch()
         task?.cancel(with: .goingAway, reason: nil)
@@ -166,10 +172,18 @@ final class RemoteWebSocketClient: RemoteTransport {
 
     private func sendPing(epoch: UInt64) {
         guard let task, currentEpoch == epoch else { return }
+        // 上一次 ping 的 pong 还没回来 → 连接已半死，主动判死触发重连。
+        if pongPending {
+            fail(URLError(.networkConnectionLost), epoch: epoch)
+            return
+        }
+        pongPending = true
         task.sendPing { [weak self] error in
-            guard let self, !self.intentionallyClosed, self.currentEpoch == epoch else { return }
-            if let error {
-                Task { @MainActor in
+            // pong 回调在 URLSession delegate 队列上派发，回 MainActor 再动状态。
+            Task { @MainActor [weak self] in
+                guard let self, !self.intentionallyClosed, self.currentEpoch == epoch else { return }
+                self.pongPending = false
+                if let error {
                     self.fail(error, epoch: epoch)
                 }
             }
@@ -278,7 +292,11 @@ final class RemoteWebSocketClient: RemoteTransport {
         // 多次 onDisconnect → ChatViewModel 排好几个并发 reconnect Task。
         _ = bumpEpoch()
         isConnected = false
+        pongPending = false
         stopPingLoop()
+        // 合成失败路径（如 pong 超时）里 socket 可能还半开着，主动收掉，
+        // 否则系统侧残留 dead socket + 未完成的 ping/receive 回调。
+        task?.cancel(with: .goingAway, reason: nil)
         task = nil
         onDisconnect?(reportedError)
     }

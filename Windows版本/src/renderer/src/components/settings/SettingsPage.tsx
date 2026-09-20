@@ -17,7 +17,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 import { chatCLIDisplayNames, chatCLIValues } from "@shared/chat";
-import { cliLaunchEnvFor } from "@shared/settings";
+import { cliLaunchEnvFor, globalRuleFilePaths } from "@shared/settings";
 import type {
   AppSettings,
   CLIKind,
@@ -838,29 +838,45 @@ function GlobalRulesSettings({ settings }: { settings: AppSettings }) {
     setRuleText(currentRule.content);
   }, [currentRule.content, target]);
 
+  const relativePath = globalRuleFilePaths[target];
+  const supported = relativePath !== null;
+  const displayPath = currentRule.path || (relativePath ? `~/${relativePath}` : "该 CLI 没有全局规则文件");
+
   return (
     <div className="settings-stack">
       <div className="settings-card">
-        <div className="segmented" role="tablist" aria-label="规则目标">
-          {(["claude", "codex"] as const).map((item) => (
-            <button className={target === item ? "active" : ""} key={item} type="button" onClick={() => setTarget(item)}>
-              {chatCLIDisplayNames[item]}
-            </button>
-          ))}
-        </div>
+        <label>
+          <span className="settings-label">目标 CLI</span>
+          <select
+            className="settings-input"
+            value={target}
+            onChange={(event) => setTarget(event.currentTarget.value as GlobalRuleTarget)}
+          >
+            {chatCLIValues.map((cli) => (
+              <option key={cli} value={cli}>
+                {chatCLIDisplayNames[cli]}{globalRuleFilePaths[cli] === null ? "（不支持）" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="rule-path">
           <span>文件路径</span>
-          <code>{currentRule.path || (target === "claude" ? "~/.claude/CLAUDE.md" : "~/.codex/AGENTS.md")}</code>
+          <code>{displayPath}</code>
         </div>
-        <textarea className="settings-textarea compact" value={ruleText} onChange={(event) => setRuleText(event.currentTarget.value)} />
+        <textarea
+          className="settings-textarea compact"
+          disabled={!supported}
+          value={ruleText}
+          onChange={(event) => setRuleText(event.currentTarget.value)}
+        />
         <div className="settings-actions">
-          <button type="button" onClick={() => setRuleText(currentRule.content)}>重新读取</button>
+          <button type="button" disabled={!supported} onClick={() => setRuleText(currentRule.content)}>重新读取</button>
           <button
             className="settings-primary-button"
             type="button"
+            disabled={!supported}
             onClick={() => void savePatch({
               globalRules: {
-                ...settings.globalRules,
                 [target]: {
                   ...currentRule,
                   content: ruleText
@@ -871,7 +887,11 @@ function GlobalRulesSettings({ settings }: { settings: AppSettings }) {
             <Save size={14} /> 保存
           </button>
         </div>
-        <p className="hint">保存到主设置服务；同步到 CLI 实际规则文件需要主线补文件写入服务。</p>
+        <p className="hint">
+          保存到 acode 设置并同步写入上方 CLI 全局规则文件，开启新的 CLI 会话后生效。
+          {target === "agy" || target === "gemini" ? " Antigravity 与 Gemini 共用同一文件。" : null}
+          {target === "cursor" ? " Cursor 的 .mdc 规则需要 frontmatter，保存时会自动补 alwaysApply 头。" : null}
+        </p>
       </div>
     </div>
   );
@@ -907,7 +927,7 @@ function AboutSettings() {
         <div className="settings-row"><span>版权</span><b>© 2026 crispvibe</b></div>
         <div className="settings-row"><span>许可</span><b>仅限个人非商业使用 · 禁止商用</b></div>
         <div className="settings-row"><span>协议</span><b>PolyForm Noncommercial 1.0.0</b></div>
-        <div className="settings-row"><span>QQ 群</span><b>Code 开源技术交流群</b></div>
+        <div className="settings-row"><span>QQ 群</span><b>Code 开源技术交流群 1076321843</b></div>
         <div className="settings-row"><span>仓库</span><b>github.com/crispvibe/Acode-Desktop</b></div>
       </div>
     </div>

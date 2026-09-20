@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   appSettingsSchema,
-  appSettingsUpdateSchema,
+  mergeGlobalRules,
   normalizeAppSettings,
   type AppSettings,
   type AppSettingsUpdate
@@ -48,8 +48,7 @@ export class SettingsJsonStore {
     return this.write(updater(current));
   }
 
-  async patch(rawPatch: unknown): Promise<AppSettings> {
-    const patch: AppSettingsUpdate = appSettingsUpdateSchema.parse(rawPatch);
+  async patch(patch: AppSettingsUpdate): Promise<AppSettings> {
     return this.update((settings) => normalizeAppSettings({
       ...settings,
       ...patch,
@@ -57,16 +56,7 @@ export class SettingsJsonStore {
         ...settings.appendRule,
         ...patch.appendRule
       } : settings.appendRule,
-      globalRules: patch.globalRules ? {
-        claude: {
-          ...settings.globalRules.claude,
-          ...patch.globalRules.claude
-        },
-        codex: {
-          ...settings.globalRules.codex,
-          ...patch.globalRules.codex
-        }
-      } : settings.globalRules
+      globalRules: mergeGlobalRules(settings.globalRules, patch.globalRules)
     }));
   }
 }

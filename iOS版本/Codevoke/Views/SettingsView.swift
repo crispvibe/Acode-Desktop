@@ -68,7 +68,7 @@ struct SettingsView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("© 2026 crispvibe · 仅限个人非商业使用，禁止商用")
                                     Text("许可：PolyForm Noncommercial 1.0.0")
-                                    Text("QQ 群：Code 开源技术交流群")
+                                    Text("QQ 群：1076321843（Code 开源技术交流群）")
                                     Text("仓库：github.com/crispvibe/Acode-Desktop")
                                 }
                                 .font(.system(size: 12))

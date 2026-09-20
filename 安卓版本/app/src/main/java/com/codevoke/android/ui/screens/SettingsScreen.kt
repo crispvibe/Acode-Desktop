@@ -163,7 +163,7 @@ fun SettingsScreen(
                     ) {
                         Text("© 2026 crispvibe · 仅限个人非商业使用，禁止商用", color = CodevokeColor.Muted, fontSize = 12.sp)
                         Text("许可：PolyForm Noncommercial 1.0.0", color = CodevokeColor.Muted, fontSize = 12.sp)
-                        Text("QQ 群：Code 开源技术交流群", color = CodevokeColor.Muted, fontSize = 12.sp)
+                        Text("QQ 群：1076321843（Code 开源技术交流群）", color = CodevokeColor.Muted, fontSize = 12.sp)
                         Text("仓库：github.com/crispvibe/Acode-Desktop", color = CodevokeColor.Muted, fontSize = 12.sp)
                     }
                 }

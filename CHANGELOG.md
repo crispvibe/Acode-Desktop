@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- **全局规则**：macOS/Windows 全局提示词从 Claude/Codex 两家扩到全部 9 家 CLI——按各家真实指令文件写入（Claude `~/.claude/CLAUDE.md`、Codex `~/.codex/AGENTS.md`、Cursor `~/.cursor/rules/acode.mdc`（自动补 alwaysApply frontmatter）、Gemini/Antigravity `~/.gemini/GEMINI.md`、Qwen `~/.qwen/QWEN.md`、Copilot `~/.copilot/copilot-instructions.md`、Kimi `~/.kimi-code/AGENTS.md`、Kiro `~/.kiro/steering/AGENTS.md`）；UI 改下拉选择器、按目标单独保存、原子写盘，旧设置向后兼容。
+- **移动端稳定性审计修复**：iOS/Android 连接代际防护（旧 transport/listener 回调不再污染新连接）、iOS pong 心跳看门狗判半死连接、patch 增加 sessionId 归属校验、per-session 快照缓存、pending focus 门禁防迟到快照闪回旧会话、Android ON_STOP 后台断连+回前台恢复、附件上传前置大小拦截+有界读取（防 OOM）、pendingCommands 上限保护。
+- **文档**：README / README_EN 排版与文案重设计——截图改为桌面大图在上、两张手机截图并排在下；文案精简，突出免费开源；下载区改为按架构分包（macOS arm64/x64 DMG，Windows x64/arm64 安装包与便携版）；QQ 群补充群号 1076321843。
 - **文档**：README / README_EN 新增「下载」区块——macOS / Windows（安装包 + 便携版）/ Android / iOS 四端 GitHub Releases 最新版直达链接（iOS 标注未签名 IPA 需 TrollStore/自签）；「纯局域网」表述更新为「局域网 + 跨网直连（IPv6 / 端口映射 + 扫码配对）」，安全提示改为 wss + 配对 token 鉴权说明，原「已知缺口：跨网远程」章节替换为「跨网直连」能力说明。
 
 ## 0.4.0 · acode 收尾整理

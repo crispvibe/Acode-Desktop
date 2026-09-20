@@ -25,11 +25,20 @@ class RemoteChatClient(
         .pingInterval(20, TimeUnit.SECONDS)
         .build(),
 ) {
+    @Volatile
     var onStatus: ((String) -> Unit)? = null
+    @Volatile
     var onError: ((String?) -> Unit)? = null
+    @Volatile
     var onSnapshot: ((RemotePanelSnapshot) -> Unit)? = null
+    @Volatile
     var onPatch: ((RemotePanelPatch) -> Unit)? = null
+    @Volatile
     var onAck: ((commandId: String, status: String, message: String?, sessionId: String?) -> Unit)? = null
+    /// 连续重连失败多轮后回调：当前端点大概率已失效（Wi-Fi/蜂窝切换、
+    /// host 重启换址），上层应重跑 endpoint 竞速而不是继续死磕旧地址。
+    @Volatile
+    var onConnectionStale: (() -> Unit)? = null
     @Volatile
     var isConnected: Boolean = false
         private set
@@ -38,18 +47,31 @@ class RemoteChatClient(
         private set
     val isReady: Boolean get() = isConnected
 
+    // 以下字段被主线程（ViewModel 调用）与 OkHttp 回调线程/reconnectJob
+    // （Dispatchers.IO）双向读写 —— @Volatile 保证可见性，connect/disconnect
+    // 用 @Synchronized 串行化，避免两轮连接交错互相覆盖。
+    @Volatile
     private var webSocket: WebSocket? = null
+    @Volatile
     private var config: RemoteChatConfig? = null
+    @Volatile
     private var activeClient: OkHttpClient = defaultClient
+    @Volatile
     private var reconnectSessionId: String? = null
+    @Volatile
     private var reconnectLastRevision: Int? = null
+    @Volatile
     private var reconnectJob: Job? = null
+    @Volatile
     private var reconnectAttempt = 0
+    @Volatile
     private var intentionallyClosed = false
+    @Volatile
     private var connectionGeneration = 0
     @Volatile
     private var readySignal: CompletableDeferred<Boolean> = CompletableDeferred()
 
+    @Synchronized
     fun connect(
         config: RemoteChatConfig,
         focusedSessionId: String? = null,
@@ -76,6 +98,7 @@ class RemoteChatClient(
         webSocket = activeClient.newWebSocket(requestBuilder.build(), Listener(focusedSessionId, lastRevision, generation))
     }
 
+    @Synchronized
     fun disconnect() {
         intentionallyClosed = true
         isTransportConnected = false
@@ -83,7 +106,10 @@ class RemoteChatClient(
         connectionGeneration += 1
         reconnectJob?.cancel()
         reconnectJob = null
+        // close() 是优雅关闭（要等对方回 close 帧），网络已死时会滞留；
+        // cancel() 立即释放 socket —— 后台挂起/手动断开都要求资源当场归还。
         webSocket?.close(1000, "client closing")
+        webSocket?.cancel()
         webSocket = null
     }
 
@@ -139,9 +165,17 @@ class RemoteChatClient(
         }
         reconnectAttempt = (reconnectAttempt + 1).coerceAtMost(5)
         reconnectJob?.cancel()
+        // 调度时记下一代际：等待期间若有新的 connect()/disconnect()，到点
+        // 必须放弃 —— 否则旧 job 会用陈旧 session/revision 覆盖新连接。
+        val scheduledGeneration = connectionGeneration
         reconnectJob = scope.launch {
             delay(seconds * 1000)
+            if (scheduledGeneration != connectionGeneration || intentionallyClosed) return@launch
             connect(nextConfig, reconnectSessionId, reconnectLastRevision)
+        }
+        // 已连续失败多轮（约 ≥7s）：通知上层重竞速 endpoint。
+        if (reconnectAttempt >= 3) {
+            onConnectionStale?.invoke()
         }
     }
 
@@ -212,10 +246,19 @@ class RemoteChatClient(
             isTransportConnected = false
             completeReadySignal(false)
             onStatus?.invoke("未连接")
-            onError?.invoke(t.localizedMessage)
             // 401（token 失效）与证书指纹不匹配都是确定性失败，重试无意义，
-            // 需重新配对 —— 停止自动重连，避免无限循环。
-            if (response?.code == 401 || RemoteWanClient.isCertificateFailure(t)) {
+            // 需重新配对 —— 停止自动重连，避免无限循环；错误归类为可执行文案，
+            // 不把 SSL/HTTP 原始异常串直接弹给用户。
+            val authFailed = response?.code == 401
+            val certFailed = RemoteWanClient.isCertificateFailure(t)
+            onError?.invoke(
+                when {
+                    authFailed -> "鉴权失败，请删除该设备后重新配对。"
+                    certFailed -> "电脑端证书已更换，请删除该设备后重新配对。"
+                    else -> t.localizedMessage
+                },
+            )
+            if (authFailed || certFailed) {
                 intentionallyClosed = true
                 return
             }

@@ -60,7 +60,8 @@ export const appendRuleSchema = z.object({
 
 export type AppendRule = z.infer<typeof appendRuleSchema>;
 
-export const globalRuleTargetSchema = z.enum(["claude", "codex"]);
+/// 全局规则目标 = 全部 9 家 CLI（与 cliKindSchema 同源）。
+export const globalRuleTargetSchema = cliKindSchema;
 export type GlobalRuleTarget = z.infer<typeof globalRuleTargetSchema>;
 
 export const globalRuleSchema = z.object({
@@ -71,12 +72,68 @@ export const globalRuleSchema = z.object({
 
 export type GlobalRule = z.infer<typeof globalRuleSchema>;
 
+/// 单个规则条目：缺键补默认值，整条损坏（非对象等）时 catch 回空条目，保证旧配置能 parse。
+const globalRuleEntrySchema = globalRuleSchema
+  .catch({ enabled: true, path: "", content: "" })
+  .default({});
+
 export const globalRulesSchema = z.object({
-  claude: globalRuleSchema.default({}),
-  codex: globalRuleSchema.default({})
+  claude: globalRuleEntrySchema,
+  codex: globalRuleEntrySchema,
+  cursor: globalRuleEntrySchema,
+  gemini: globalRuleEntrySchema,
+  qwen: globalRuleEntrySchema,
+  copilot: globalRuleEntrySchema,
+  kimi: globalRuleEntrySchema,
+  agy: globalRuleEntrySchema,
+  kiro: globalRuleEntrySchema
 });
 
 export type GlobalRules = z.infer<typeof globalRulesSchema>;
+
+/// 更新补丁里的 globalRules：键级 optional（不带 default），避免 zod 把没传的键补成空规则
+/// 覆盖掉已存内容——patch 里出现的键就是调用方真正要改的键。
+export const globalRulesPatchSchema = z.object({
+  claude: globalRuleSchema.partial().optional(),
+  codex: globalRuleSchema.partial().optional(),
+  cursor: globalRuleSchema.partial().optional(),
+  gemini: globalRuleSchema.partial().optional(),
+  qwen: globalRuleSchema.partial().optional(),
+  copilot: globalRuleSchema.partial().optional(),
+  kimi: globalRuleSchema.partial().optional(),
+  agy: globalRuleSchema.partial().optional(),
+  kiro: globalRuleSchema.partial().optional()
+});
+
+export type GlobalRulesPatch = z.infer<typeof globalRulesPatchSchema>;
+
+/// 按 patch 中出现的键逐条合并；patch 没带的键保持原值。
+export function mergeGlobalRules(base: GlobalRules, patch: GlobalRulesPatch | undefined): GlobalRules {
+  const merged = { ...base };
+  for (const target of chatCLIValues) {
+    const entry = patch?.[target];
+    if (entry) {
+      merged[target] = { ...base[target], ...entry };
+    }
+  }
+  return merged;
+}
+
+/// 各 CLI 全局指令文件相对用户主目录的路径（"/" 分隔）；null = 该 CLI 无全局指令文件机制，
+/// UI 标"不支持"禁用，不硬写。依据官方文档核实：agy（Antigravity）与 gemini 共用
+/// ~/.gemini/GEMINI.md；cursor 走 ~/.cursor/rules/*.mdc（需 alwaysApply frontmatter，
+/// 写盘时自动补）；kiro 走 ~/.kiro/steering/ 下的 AGENTS.md。
+export const globalRuleFilePaths: Record<GlobalRuleTarget, string | null> = {
+  claude: ".claude/CLAUDE.md",
+  codex: ".codex/AGENTS.md",
+  cursor: ".cursor/rules/acode.mdc",
+  gemini: ".gemini/GEMINI.md",
+  qwen: ".qwen/QWEN.md",
+  copilot: ".copilot/copilot-instructions.md",
+  kimi: ".kimi-code/AGENTS.md",
+  agy: ".gemini/GEMINI.md",
+  kiro: ".kiro/steering/AGENTS.md"
+};
 
 export const secretFieldSchema = z.enum(["apiKey", "authToken"]);
 export type SecretField = z.infer<typeof secretFieldSchema>;
@@ -215,7 +272,8 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 export const appSettingsUpdateSchema = appSettingsSchema
   .omit({ schemaVersion: true, updatedAt: true })
-  .partial();
+  .partial()
+  .extend({ globalRules: globalRulesPatchSchema.optional() });
 
 export type AppSettingsUpdate = z.infer<typeof appSettingsUpdateSchema>;
 
@@ -235,16 +293,7 @@ export function normalizeAppSettings(value: unknown): AppSettings {
       ...DEFAULT_APP_SETTINGS.appendRule,
       ...raw.appendRule
     },
-    globalRules: {
-      claude: {
-        ...DEFAULT_APP_SETTINGS.globalRules.claude,
-        ...raw.globalRules?.claude
-      },
-      codex: {
-        ...DEFAULT_APP_SETTINGS.globalRules.codex,
-        ...raw.globalRules?.codex
-      }
-    }
+    globalRules: mergeGlobalRules(DEFAULT_APP_SETTINGS.globalRules, raw.globalRules)
   });
 }
 

@@ -24,6 +24,11 @@ final class RemoteWanTransport: RemoteTransport {
     private var pinDelegate: PinnedTrustDelegate?
     private var connectTask: Task<Void, Never>?
     private var intentionallyClosed = false
+    /// 连接代际：connect()/disconnect() 每次自增。上一轮被取消的
+    /// raceEndpoints 在探测回调恢复执行时必须先比代际 —— disconnect→connect
+    /// 快速连续调用时 `intentionallyClosed` 已被新一轮复位，单看布尔拦不住
+    /// 旧 race 复活后 adopt() 覆盖新一轮的 winner/session（双 WS + session 泄漏）。
+    private var connectGeneration = 0
 
     /// 胜出地址通知（ChatViewModel 用它把 config.macHost/port 对齐到实际
     /// 可用地址，让 /files、/attachments 等 HTTP 跟随同一 endpoint）。
@@ -53,8 +58,10 @@ final class RemoteWanTransport: RemoteTransport {
         }
         disconnect(notify: false)
         intentionallyClosed = false
+        connectGeneration &+= 1
+        let generation = connectGeneration
         connectTask = Task { @MainActor [weak self] in
-            await self?.raceEndpoints()
+            await self?.raceEndpoints(generation: generation)
         }
     }
 
@@ -94,39 +101,50 @@ final class RemoteWanTransport: RemoteTransport {
         return preferred.isValid ? [preferred] : []
     }
 
-    private func raceEndpoints() async {
+    /// 本代是否仍是当前连接代。disconnect()（intentionallyClosed）与新一轮
+    /// connect()（generation 自增）都会让旧代立刻失效。
+    private func isCurrent(_ generation: Int) -> Bool {
+        !intentionallyClosed && connectGeneration == generation
+    }
+
+    private func raceEndpoints(generation: Int) async {
         guard let token = config.authToken, let certFP = config.certFP else { return }
         let (session, pinDelegate) = RemoteSecureSessionFactory.pinnedSession(certFP: certFP)
-        self.session = session
-        self.pinDelegate = pinDelegate
-        // disconnect() 可能在竞速期间先到——session 已建就自己收掉，不泄漏。
-        guard !intentionallyClosed else {
+        // disconnect()/新 connect() 可能在竞速期间先到 —— self.session 槽位
+        // 已经属于更新的一代（或被清空），本代只收掉自己创建的局部 session，
+        // 绝不能再写回 self.*，否则会覆盖新一代的连接状态。
+        guard isCurrent(generation) else {
             session.invalidateAndCancel()
-            self.session = nil
-            self.pinDelegate = nil
             return
         }
+        self.session = session
+        self.pinDelegate = pinDelegate
 
         let endpoints = candidates()
         guard !endpoints.isEmpty else {
-            finishAllFailed()
+            finishAllFailed(generation: generation)
             return
         }
 
         // §6：lastGood（=排序后的第一条候选）先行探测；只有"不可达"才继续，
         // 401/pin 不匹配在所有 endpoint 上必然同样失败，直接短路。
         var sawUnauthorized = false
-        switch await probe(endpoints[0], token: token, session: session) {
+        switch await probe(endpoints[0], token: token, session: session, generation: generation) {
         case .success(let info):
-            adopt(endpoints[0], info: info, session: session)
+            adopt(endpoints[0], info: info, session: session, generation: generation)
             return
         case .unauthorized:
             sawUnauthorized = true
         case .unreachable:
             break
         }
-        if sawUnauthorized || pinDelegate.sawPinMismatch || intentionallyClosed {
-            finishAllFailed(unauthorized: sawUnauthorized)
+        // 探测挂起期间可能发生了 disconnect→connect：旧代到此为止。
+        guard isCurrent(generation) else {
+            session.invalidateAndCancel()
+            return
+        }
+        if sawUnauthorized || pinDelegate.sawPinMismatch {
+            finishAllFailed(unauthorized: sawUnauthorized, generation: generation)
             return
         }
 
@@ -137,7 +155,7 @@ final class RemoteWanTransport: RemoteTransport {
                 for endpoint in rest {
                     group.addTask { [weak self] in
                         guard let self else { return (endpoint, .unreachable) }
-                        return (endpoint, await self.probe(endpoint, token: token, session: session))
+                        return (endpoint, await self.probe(endpoint, token: token, session: session, generation: generation))
                     }
                 }
                 var winning: (RemoteEndpoint, RemoteConnectInfo)?
@@ -157,18 +175,22 @@ final class RemoteWanTransport: RemoteTransport {
                 sawUnauthorized = sawUnauthorized || groupSawUnauthorized
                 return winning
             }
-            if let winner, !intentionallyClosed {
-                adopt(winner.0, info: winner.1, session: session)
+            if let winner, isCurrent(generation) {
+                adopt(winner.0, info: winner.1, session: session, generation: generation)
                 return
             }
         }
 
-        finishAllFailed(unauthorized: sawUnauthorized)
+        guard isCurrent(generation) else {
+            session.invalidateAndCancel()
+            return
+        }
+        finishAllFailed(unauthorized: sawUnauthorized, generation: generation)
     }
 
     /// 单条候选探测：`GET /connect_info`，3s 未拿到 200 即换下一条（§6）。
-    private func probe(_ endpoint: RemoteEndpoint, token: String, session: URLSession) async -> ProbeOutcome {
-        guard !intentionallyClosed else { return .unreachable }
+    private func probe(_ endpoint: RemoteEndpoint, token: String, session: URLSession, generation: Int) async -> ProbeOutcome {
+        guard isCurrent(generation) else { return .unreachable }
         do {
             let info = try await RemotePairingClient.fetchConnectInfo(
                 host: endpoint.a, port: endpoint.p, token: token,
@@ -184,8 +206,13 @@ final class RemoteWanTransport: RemoteTransport {
     }
 
     /// 胜出 endpoint：先静默刷新 eps + 写回 lastGood，再建真实 WS。
-    private func adopt(_ endpoint: RemoteEndpoint, info: RemoteConnectInfo, session: URLSession) {
-        guard !intentionallyClosed else { return }
+    private func adopt(_ endpoint: RemoteEndpoint, info: RemoteConnectInfo, session: URLSession, generation: Int) {
+        // 代际失效时 session 参数是本代自己的局部对象（self.session 可能已是
+        // 新一代的），直接收掉它即可，不要碰 self.*。
+        guard isCurrent(generation) else {
+            session.invalidateAndCancel()
+            return
+        }
         let hostId = config.hostId ?? RemoteWanCredentials.normalizeFP(config.certFP ?? "")
         if !hostId.isEmpty {
             store.applyConnectInfo(hostId: hostId, name: info.name, eps: info.eps ?? [])
@@ -241,8 +268,8 @@ final class RemoteWanTransport: RemoteTransport {
         }
     }
 
-    private func finishAllFailed(unauthorized: Bool = false) {
-        guard !intentionallyClosed else { return }
+    private func finishAllFailed(unauthorized: Bool = false, generation: Int) {
+        guard isCurrent(generation) else { return }
         let pinMismatch = pinDelegate?.sawPinMismatch == true
         // 竞速阶段全部失败 = 不会再有 WS 接走 session，这里收掉。
         session?.invalidateAndCancel()
@@ -261,6 +288,7 @@ final class RemoteWanTransport: RemoteTransport {
 
     private func disconnect(notify: Bool) {
         intentionallyClosed = true
+        connectGeneration &+= 1
         connectTask?.cancel()
         connectTask = nil
         winner?.disconnect()

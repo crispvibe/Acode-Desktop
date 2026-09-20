@@ -162,6 +162,20 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
     private val pendingCommands = mutableListOf<PendingRemoteCommand>()
     private var pendingProjectFocusJob: Job? = null
     private var pendingSessionFocusJob: Job? = null
+    /// 等待 focus 到位的目标（=用户最新意图）。pending 期间到达的其它
+    /// session/项目 snapshot 只更新目录，不替换消息区与选中态（对齐 iOS
+    /// shouldAccept 语义，避免切换途中被迟到快照把消息区闪回旧会话）。
+    private var pendingProjectFocusId: String? = null
+    private var pendingSessionFocusId: String? = null
+    /// per-session snapshot 缓存：切会话时先贴上次看到的快照，server 的
+    /// focusSession 响应到达后再覆盖（iOS PanelStateMirror 的等价物）。
+    private val snapshotCacheBySessionId = mutableMapOf<String?, RemotePanelSnapshot>()
+    /// endpoint 重竞速去重：连续重连失败期间 onConnectionStale 会反复触发。
+    private var endpointReraceRunning = false
+    /// 每收到一个 panel_state envelope（含被门禁拒绝的）+1 —— 是"连接活着"
+    /// 的最硬证据，refresh 等待与超时判定用它而不是 revision（revision 按
+    /// session 日志独立编号，跨会话不可比）。
+    private var panelStateSequence = 0
     private var pendingAttachmentUploadCount = 0
     /// 合并窗口：流式期间 host 每 ~30ms 推一个 patch，绝大多数只改
     /// streamingTexts/statusText/tokens 这类外观字段。这类 patch 立即并入
@@ -378,6 +392,12 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             snapshot = null
             cancelCosmeticPublish()
             autoLoadedFilesProjectId = null
+            clearPendingSessionFocus()
+            clearPendingProjectFocus()
+            snapshotCacheBySessionId.clear()
+            // 上一台设备未 ack 的命令不带过来 —— sessionId/命令语义都只对
+            // 原 host 有效，重放到新 host 只会收获一串 reject。
+            pendingCommands.clear()
             remoteChatClient.disconnect()
             chat = ChatUiState(connectionStatus = "连接中")
             val wifiFactory = LanNetworkSelector.wifiNetwork(getApplication())?.socketFactory
@@ -496,10 +516,26 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         snapshot = null
         cancelCosmeticPublish()
         autoLoadedFilesProjectId = null
+        clearPendingSessionFocus()
+        clearPendingProjectFocus()
+        snapshotCacheBySessionId.clear()
         pendingCommands.clear()
         connectedViaLan = false
         devices = devices.copy(connectedHostId = null)
         chat = ChatUiState()
+    }
+
+    /**
+     * 进后台：断开 WS。Android 上 OkHttp ping 在后台继续跑既耗电又会让
+     * 连接进入半死态（网络一切换 socket 就黑洞化）；回前台由
+     * resumeFromForeground → refreshChat 恢复。pendingCommands 与
+     * pending focus 保留，重连后经 resume/replay 自动收敛。
+     */
+    fun suspendForBackground() {
+        if (!chat.config.isComplete) return
+        remoteChatClient.disconnect()
+        cancelCosmeticPublish()
+        chat = chat.copy(connectionStatus = "未连接")
     }
 
     fun refreshChat() {
@@ -510,17 +546,52 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             chat = chat.copy(isRefreshing = true, lastError = null)
+            val baseline = panelStateSequence
             if (config.supportsDirectHttp) {
                 val healthOk = runCatching { RemoteLanClient(config, httpClientFor(config)).health() }.getOrDefault(false)
-                // client=null → RemoteChatClient 沿用首次连接已 pin 住的 activeClient。
-                if (!healthOk || chat.connectionStatus != "已连接") connectRemoteChat(config)
+                if (!healthOk || chat.connectionStatus != "已连接") {
+                    // 端点可能已失效（网络切换/host 重启换址）：先对保存的
+                    // eps 重竞速；无赢家时 connectRemoteChat 直连原地址兜底。
+                    if (!reraceEndpoints(config)) connectRemoteChat(config)
+                }
                 sendRemoteCommand("requestSnapshot", sessionId = chat.selectedSessionId)
             } else {
                 sendRemoteCommand("requestSnapshot", sessionId = chat.selectedSessionId)
             }
-            waitForSnapshotRevisionAfter(snapshot?.revision ?: 0)
+            if (!waitForFreshSnapshot(baseline)) {
+                // 已连接但 ~3s 没有任何 panel_state：连接可能半死（TCP 黑洞），
+                // 强制重连一次兜底 —— 对齐 iOS refresh 的升级路径。
+                connectRemoteChat(chat.config)
+            }
             if (config.supportsDirectHttp) reloadFiles()
             chat = chat.copy(isRefreshing = false)
+        }
+    }
+
+    /**
+     * 端点重竞速（契约 §6 的恢复路径）：当前地址连续连不上时，对 EndpointStore
+     * 里该主机保存的 eps 重新跑 lastGood 先行 + 并行竞速，胜出后写回 lastGood
+     * 并用新地址重建 WS。返回 true = 已发起新连接。
+     */
+    private suspend fun reraceEndpoints(config: RemoteChatConfig): Boolean {
+        if (endpointReraceRunning) return false
+        val host = endpointStore.list().firstOrNull { it.certFP == config.certFP } ?: return false
+        val ordered = (listOfNotNull(host.lastGood) + host.eps).distinct()
+        if (ordered.isEmpty()) return false
+        endpointReraceRunning = true
+        try {
+            val wifiFactory = LanNetworkSelector.wifiNetwork(getApplication())?.socketFactory
+            val race = raceEndpoints(host, ordered, wifiFactory)
+            val winner = race.winner ?: return false
+            endpointStore.markLastGood(host.hostId, winner)
+            connectedViaLan = winner.isLanAddress
+            connectRemoteChat(
+                config.copy(macHost = winner.address, port = winner.port),
+                client = RemoteWanClient.wsClient(host.certFP, socketFactoryFor(winner, wifiFactory)),
+            )
+            return true
+        } finally {
+            endpointReraceRunning = false
         }
     }
 
@@ -654,6 +725,8 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
 
     fun selectProject(project: RemoteProject) {
         cancelCosmeticPublish()
+        clearPendingSessionFocus()
+        pendingProjectFocusId = project.id
         autoLoadedFilesProjectId = project.id
         chat = chat.copy(
             selectedProjectId = project.id,
@@ -662,6 +735,8 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             attachments = emptyList(),
             files = emptyList(),
             fileError = null,
+            currentFilePath = "",
+            parentFilePath = null,
         )
         scheduleProjectFocusTimeout(project.id)
         sendRemoteCommand("focusProject", args = JSONObject().put("projectId", project.id))
@@ -712,19 +787,38 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
 
     fun selectSession(session: RemoteSession) {
         cancelCosmeticPublish()
+        clearPendingProjectFocus()
+        val previousProjectId = chat.selectedProjectId
+        pendingSessionFocusId = session.id
         chat = chat.copy(
             selectedSessionId = session.id,
             selectedProjectId = session.projectId ?: chat.selectedProjectId,
             inputText = "",
             attachments = emptyList(),
         )
+        if (session.projectId != null && session.projectId != previousProjectId) {
+            // 会话属于别的项目：文件树跟随实际会话上下文（对齐 iOS selectSession）。
+            autoLoadedFilesProjectId = null
+            chat = chat.copy(files = emptyList(), fileError = null, currentFilePath = "", parentFilePath = null)
+            viewModelScope.launch { reloadFiles() }
+        }
+        // 先贴缓存快照 —— 用户点击后立即看到该会话的历史，而不是等
+        // server 回完 focusSession 才出现内容；新 snapshot 到达后覆盖。
+        snapshotCacheBySessionId[session.id]?.let { cached ->
+            snapshot = cached
+            remoteChatClient.updateResumeContext(cached.sessionId, cached.revision)
+            publishSnapshot(cached, clearError = false)
+        }
         scheduleSessionFocusTimeout(session.id)
         sendRemoteCommand("focusSession", sessionId = session.id, args = JSONObject().put("sessionId", session.id))
     }
 
     fun startNewChat() {
-        val projectId = chat.selectedProject?.id ?: return
+        val projectId = pendingProjectFocusId ?: chat.selectedProject?.id ?: return
         cancelCosmeticPublish()
+        clearPendingSessionFocus()
+        pendingProjectFocusId = projectId
+        scheduleProjectFocusTimeout(projectId)
         chat = chat.copy(selectedSessionId = null, inputText = "", attachments = emptyList(), messages = emptyList())
         sendRemoteCommand("focusProject", args = JSONObject().put("projectId", projectId))
         sendRemoteCommand("newDraftSession", args = JSONObject().put("projectId", projectId))
@@ -896,10 +990,16 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
 
     private fun connectRemoteChat(config: RemoteChatConfig, client: OkHttpClient? = null) {
         chat = chat.copy(config = config, connectionStatus = "连接中", lastError = null)
+        // lastRevision 与 focusedSessionId 必须属于同一条 session 日志：当前
+        // snapshot 若已是别的会话（切换途中），带它的 revision 会让 server
+        // 回放错误日志的 patch 链。不匹配就走全量 snapshot。
+        val resumeRevision = snapshot
+            ?.takeIf { it.sessionId != null && it.sessionId == chat.selectedSessionId }
+            ?.revision
         remoteChatClient.connect(
             config = config,
             focusedSessionId = chat.selectedSessionId,
-            lastRevision = snapshot?.revision,
+            lastRevision = resumeRevision,
             client = client,
         )
     }
@@ -946,21 +1046,121 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             }
         }
         remoteChatClient.onError = { error -> viewModelScope.launch { chat = chat.copy(lastError = error) } }
-        remoteChatClient.onSnapshot = { next -> viewModelScope.launch { cancelCosmeticPublish(); adoptSnapshot(next, clearError = true) } }
+        remoteChatClient.onSnapshot = { next -> viewModelScope.launch { cancelCosmeticPublish(); handleIncomingSnapshot(next) } }
         remoteChatClient.onPatch = { patch -> viewModelScope.launch { applyRemotePatch(patch) } }
         remoteChatClient.onAck = { commandId, status, message, sessionId ->
             viewModelScope.launch {
                 removePendingCommand(commandId)
-                if (!sessionId.isNullOrBlank()) chat = chat.copy(selectedSessionId = sessionId)
+                // 等待目标会话期间，旧上下文命令迟到的 ack 不能覆盖用户最新选择。
+                if (!sessionId.isNullOrBlank() &&
+                    (pendingSessionFocusId == null || pendingSessionFocusId == sessionId)
+                ) {
+                    chat = chat.copy(selectedSessionId = sessionId)
+                }
                 if (status == "error" || status == "rejected") chat = chat.copy(lastError = message)
             }
         }
+        // 连续重连失败：当前 endpoint 大概率已失效 → 重跑竞速换新地址。
+        remoteChatClient.onConnectionStale = {
+            viewModelScope.launch { reraceEndpoints(chat.config) }
+        }
+    }
+
+    /// snapshot 到达：先进 per-session 缓存，再按 pending/聚焦门禁决定是否进 UI。
+    /// 被拒绝的 envelope 只更新目录 —— 消息区与选中态不被迟到/外会话状态覆盖。
+    private fun handleIncomingSnapshot(next: RemotePanelSnapshot) {
+        panelStateSequence++
+        snapshotCacheBySessionId[next.sessionId] = next
+        if (!shouldAdoptSnapshot(next)) {
+            chat = chat.copy(
+                projects = next.projects,
+                models = next.models,
+                sessions = next.sessions,
+            )
+            if (snapshot == null && shouldAcceptBootstrapSnapshot(next)) {
+                // 首个 envelope：总得先给 UI 一份可看的状态。
+                adoptSnapshot(next, clearError = true)
+            }
+            return
+        }
+        adoptSnapshot(next, clearError = true)
+    }
+
+    /// 是否把这份 snapshot 应用到消息区/选中态（对齐 iOS shouldAccept 语义）。
+    private fun shouldAdoptSnapshot(next: RemotePanelSnapshot): Boolean {
+        pendingSessionFocusId?.let { pending ->
+            if (next.currentSessionId == pending || next.sessionId == pending) return true
+            if (next.sessions.none { it.id == pending }) {
+                // 等待的会话已从目录消失（被删/换 host）→ 放弃等待。
+                clearPendingSessionFocus()
+                return shouldAcceptBootstrapSnapshot(next)
+            }
+            return false
+        }
+        val focused = chat.selectedSessionId
+        if (focused != null) {
+            if (next.currentSessionId == focused || next.sessionId == focused) return true
+            if (next.sessions.none { it.id == focused }) {
+                // 聚焦会话已消失 → 放弃旧焦点，让新状态进来。
+                chat = chat.copy(selectedSessionId = null)
+                return shouldAcceptBootstrapSnapshot(next)
+            }
+            return false
+        }
+        val projectGate = pendingProjectFocusId ?: chat.selectedProjectId
+            ?: return shouldAcceptBootstrapSnapshot(next)
+        val currentId = next.currentSessionId
+        if (currentId != null) {
+            return next.sessions.firstOrNull { it.id == currentId }?.projectId == projectGate
+        }
+        // 草稿面板（无 currentSessionId）：只在项目切换途中才采纳草稿快照。
+        return pendingProjectFocusId != null && next.sessionId == null
+    }
+
+    private fun shouldAcceptBootstrapSnapshot(next: RemotePanelSnapshot): Boolean =
+        next.projects.isNotEmpty() || next.models.isNotEmpty() ||
+            next.sessions.isNotEmpty() || next.sessionId == null
+
+    private fun clearPendingSessionFocus() {
+        pendingSessionFocusJob?.cancel()
+        pendingSessionFocusJob = null
+        pendingSessionFocusId = null
+    }
+
+    private fun clearPendingProjectFocus() {
+        pendingProjectFocusJob?.cancel()
+        pendingProjectFocusJob = null
+        pendingProjectFocusId = null
     }
 
     private fun adoptSnapshot(next: RemotePanelSnapshot, clearError: Boolean = false) {
         snapshot = next
-        remoteChatClient.updateResumeContext(next.currentSessionId ?: chat.selectedSessionId, next.revision)
-        val projectId = chat.selectedProjectId ?: next.sessions.firstOrNull { it.id == next.currentSessionId }?.projectId ?: next.projects.firstOrNull()?.id
+        snapshotCacheBySessionId[next.sessionId] = next
+        // resume 上下文必须配成对：revision 属于 next.sessionId 的日志。
+        // （此前用 currentSessionId 配 revision —— 字段错位时 server 会在
+        //   另一条日志上按这个 revision 回放，产出错误 patch 链。）
+        remoteChatClient.updateResumeContext(next.sessionId, next.revision)
+        // pending focus 到位 → 清标记；sessionId 命中但 currentSessionId
+        // 还没翻过来的 snapshot 也算到位（避免干等 8s 超时）。
+        val pendingSession = pendingSessionFocusId
+        val pendingSatisfied = pendingSession != null &&
+            (next.currentSessionId == pendingSession || next.sessionId == pendingSession)
+        if (pendingSatisfied) clearPendingSessionFocus()
+        pendingProjectFocusId?.let { pending ->
+            val currentId = next.currentSessionId
+            // 草稿面板（currentSessionId==null）也算项目切换到位。
+            if (currentId == null || next.sessions.firstOrNull { it.id == currentId }?.projectId == pending) {
+                clearPendingProjectFocus()
+            }
+        }
+        publishSnapshot(next, clearError = clearError, forcedSessionId = if (pendingSatisfied) pendingSession else null)
+    }
+
+    /// snapshot → chat UI 状态的字段映射（adoptSnapshot 与切会话贴缓存共用）。
+    private fun publishSnapshot(next: RemotePanelSnapshot, clearError: Boolean, forcedSessionId: String? = null) {
+        val projectId = chat.selectedProjectId
+            ?: next.sessions.firstOrNull { it.id == next.currentSessionId }?.projectId
+            ?: next.projects.firstOrNull()?.id
         val modelId = next.composer.modelID.ifBlank {
             next.models.firstOrNull { it.cli == next.composer.cli && it.isDefault }?.id ?: next.models.firstOrNull()?.id.orEmpty()
         }
@@ -969,7 +1169,7 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             models = next.models,
             sessions = next.sessions,
             selectedProjectId = projectId,
-            selectedSessionId = next.currentSessionId ?: chat.selectedSessionId,
+            selectedSessionId = forcedSessionId ?: next.currentSessionId ?: chat.selectedSessionId,
             selectedModelId = modelId,
             messages = next.messages,
             streamingTexts = next.streamingTexts,
@@ -998,23 +1198,49 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun applyRemotePatch(patch: com.codevoke.android.data.RemotePanelPatch) {
+        panelStateSequence++
         val current = snapshot
-        if (current == null) {
-            requestSnapshot(patch.sessionId ?: chat.selectedSessionId)
+        // patch 归属面板：当前 snapshot，或 per-session 缓存里的同名 base
+        // （等待目标会话期间，目标会话自己的 patch 可以提前合到缓存上）。
+        val base = when {
+            current != null && current.sessionId == patch.sessionId -> current
+            else -> snapshotCacheBySessionId[patch.sessionId]
+        }
+        if (base == null) {
+            // 没有该 session 的 base。只有属于当前/等待目标的 patch 才主动
+            // 补 snapshot；外会话 patch 直接丢，等它的 snapshot 自然到达。
+            if (patch.sessionId == null ||
+                patch.sessionId == pendingSessionFocusId ||
+                patch.sessionId == chat.selectedSessionId
+            ) {
+                requestSnapshot(patch.sessionId ?: chat.selectedSessionId)
+            }
             return
         }
-        val merged = current.applyPatch(patch)
+        val merged = base.applyPatch(patch)
         if (merged == null) {
-            requestSnapshot(patch.sessionId ?: current.currentSessionId ?: chat.selectedSessionId)
+            // base 不匹配 —— 主动请求 fresh snapshot（对齐 iOS 行为）。
+            requestSnapshot(patch.sessionId ?: base.currentSessionId ?: chat.selectedSessionId)
             return
         }
-        // mirror 状态必须先推进 —— 下一个 patch 的 baseRevision 校验依赖它。
-        snapshot = merged
-        if (patch.isCosmeticOnly()) {
-            pendingCosmeticSnapshot = merged
-            scheduleCosmeticPublish()
-        } else {
+        snapshotCacheBySessionId[merged.sessionId] = merged
+        if (base === current) {
+            // mirror 状态必须先推进 —— 下一个 patch 的 baseRevision 校验依赖它。
+            snapshot = merged
+            // pending 会话过滤：等待目标期间，其它会话的 patch 只刷缓存不进 UI。
+            val pending = pendingSessionFocusId
+            if (pending != null && patch.sessionId != pending) return
+            if (patch.isCosmeticOnly()) {
+                pendingCosmeticSnapshot = merged
+                scheduleCosmeticPublish()
+            } else {
+                cancelCosmeticPublish()
+                adoptSnapshot(merged)
+            }
+        } else if (patch.sessionId == pendingSessionFocusId) {
+            // 缓存里的目标会话被 patch 更新 → 认为 focus 已到位，立即发布。
             cancelCosmeticPublish()
+            snapshot = merged
             adoptSnapshot(merged)
         }
     }
@@ -1103,7 +1329,10 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         pendingProjectFocusJob?.cancel()
         pendingProjectFocusJob = viewModelScope.launch {
             delay(8_000)
-            if (chat.selectedProjectId == projectId) {
+            // 只有 pending 还没被 snapshot 解决才兜底 —— 对齐 iOS pendingFocusTimeout。
+            if (pendingProjectFocusId == projectId) {
+                pendingProjectFocusId = null
+                pendingProjectFocusJob = null
                 sendRemoteCommand("requestSnapshot", sessionId = chat.selectedSessionId)
             }
         }
@@ -1113,7 +1342,9 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         pendingSessionFocusJob?.cancel()
         pendingSessionFocusJob = viewModelScope.launch {
             delay(8_000)
-            if (chat.selectedSessionId == sessionId) {
+            if (pendingSessionFocusId == sessionId) {
+                pendingSessionFocusId = null
+                pendingSessionFocusJob = null
                 sendRemoteCommand("requestSnapshot", sessionId = sessionId)
             }
         }
@@ -1128,11 +1359,14 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         throw IllegalStateException("连接通道建立超时，请确认电脑端在线后重试。")
     }
 
-    private suspend fun waitForSnapshotRevisionAfter(previousRevision: Int) {
+    /// 等到任意一个新 panel_state envelope 落地（含被门禁拒绝的 —— 那也是
+    /// 连接活着的证据）。返回 false = ~3s 无响应，调用方应升级重连。
+    private suspend fun waitForFreshSnapshot(baseline: Int): Boolean {
         repeat(30) {
-            if ((snapshot?.revision ?: 0) > previousRevision) return
+            if (panelStateSequence != baseline) return true
             delay(100)
         }
+        return false
     }
 
     private fun userMessage(error: Throwable, fallback: String = "请求失败。"): String {

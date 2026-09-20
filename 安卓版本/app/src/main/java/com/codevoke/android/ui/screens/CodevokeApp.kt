@@ -72,7 +72,13 @@ fun CodevokeApp() {
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START) vm.resumeFromForeground()
+            when (event) {
+                // 回前台：health 检查 + 必要时重连/补 snapshot。
+                Lifecycle.Event.ON_START -> vm.resumeFromForeground()
+                // 进后台：断开 WS —— 后台挂着只会让连接半死 + OkHttp ping 空耗电。
+                Lifecycle.Event.ON_STOP -> vm.suspendForBackground()
+                else -> Unit
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

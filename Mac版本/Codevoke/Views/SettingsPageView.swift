@@ -49,6 +49,13 @@ struct SettingsPageView: View {
     private enum GlobalRuleKind: String, CaseIterable, Identifiable, Hashable, Sendable {
         case claude
         case codex
+        case cursor
+        case gemini
+        case qwen
+        case copilot
+        case kimi
+        case agy
+        case kiro
 
         var id: String { rawValue }
 
@@ -56,6 +63,53 @@ struct SettingsPageView: View {
             switch self {
             case .claude: "Claude Code"
             case .codex: "Codex"
+            case .cursor: "Cursor Agent"
+            case .gemini: "Gemini"
+            case .qwen: "Qwen Code"
+            case .copilot: "Copilot"
+            case .kimi: "Kimi"
+            case .agy: "Antigravity"
+            case .kiro: "Kiro"
+            }
+        }
+
+        /// 各家 CLI 的全局指令文件（相对真实用户目录）。
+        /// - claude：~/.claude/CLAUDE.md（官方 memory 机制）
+        /// - codex：~/.codex/AGENTS.md
+        /// - cursor：~/.cursor/rules/ 目录下的 .mdc 用户规则文件（Cursor 无单一全局 AGENTS.md）
+        /// - gemini：~/.gemini/GEMINI.md
+        /// - qwen：~/.qwen/QWEN.md（官方 Global Memory）
+        /// - copilot：~/.copilot/copilot-instructions.md（官方 user-level instructions）
+        /// - kimi：~/.kimi-code/AGENTS.md（Kimi Code CLI 的 $KIMI_CODE_HOME 全局指令文件）
+        /// - agy：~/.gemini/GEMINI.md（Antigravity 官方全局规则文件，与 Gemini CLI 共用）
+        /// - kiro：~/.kiro/steering/AGENTS.md（全局 steering，AGENTS.md 始终注入会话）
+        var relativePath: String {
+            switch self {
+            case .claude: ".claude/CLAUDE.md"
+            case .codex: ".codex/AGENTS.md"
+            case .cursor: ".cursor/rules/acode.mdc"
+            case .gemini: ".gemini/GEMINI.md"
+            case .qwen: ".qwen/QWEN.md"
+            case .copilot: ".copilot/copilot-instructions.md"
+            case .kimi: ".kimi-code/AGENTS.md"
+            case .agy: ".gemini/GEMINI.md"
+            case .kiro: ".kiro/steering/AGENTS.md"
+            }
+        }
+
+        /// 该 CLI 全局规则机制的补充说明；nil 表示无需额外提示。
+        var note: String? {
+            switch self {
+            case .cursor:
+                "Cursor 的全局规则保存在 ~/.cursor/rules/ 目录的 .mdc 文件中，这里编辑其中的 acode.mdc（自动补 alwaysApply 头部，对本机所有项目生效）。"
+            case .kimi:
+                "适用于 Kimi Code CLI；旧版 kimi-cli（~/.kimi）没有全局指令文件机制。"
+            case .agy:
+                "Antigravity 与 Gemini CLI 共用同一个全局规则文件，改动对两者同时生效。"
+            case .kiro:
+                "Kiro 的全局规则保存在 ~/.kiro/steering/ 目录的 Markdown 文件中，这里编辑其中的 AGENTS.md，每个会话都会自动注入。"
+            case .claude, .codex, .gemini, .qwen, .copilot:
+                nil
             }
         }
     }
@@ -190,14 +244,6 @@ struct SettingsPageView: View {
 
     nonisolated private static let codexAuthURL: URL = {
         realHomeDir.appendingPathComponent(".codex/auth.json")
-    }()
-
-    nonisolated private static let claudeGlobalRulesURL: URL = {
-        realHomeDir.appendingPathComponent(".claude/CLAUDE.md")
-    }()
-
-    nonisolated private static let codexGlobalRulesURL: URL = {
-        realHomeDir.appendingPathComponent(".codex/AGENTS.md")
     }()
 
     nonisolated private static let maxEditableGlobalRuleBytes = 1_000_000
@@ -931,10 +977,25 @@ struct SettingsPageView: View {
     private var globalRulesSection: some View {
         settingsCard(title: "全局规则") {
             VStack(alignment: .leading, spacing: 10) {
-                inlineSegmentedPicker(
-                    selection: $selectedGlobalRuleKind,
-                    options: GlobalRuleKind.allCases.map { ($0, $0.title) }
-                )
+                Menu {
+                    ForEach(GlobalRuleKind.allCases) { kind in
+                        Button(kind.title) { selectedGlobalRuleKind = kind }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(selectedGlobalRuleKind.title)
+                            .font(.system(size: 12, weight: .semibold))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 34)
+                    .background(AppTheme.inputSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AppTheme.hairline, lineWidth: 1))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text("文件路径")
@@ -945,6 +1006,12 @@ struct SettingsPageView: View {
                         .textSelection(.enabled)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                }
+
+                if let note = selectedGlobalRuleKind.note {
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -1547,7 +1614,7 @@ struct SettingsPageView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("© 2026 crispvibe · 仅限个人非商业使用，禁止商用")
                         Text("许可：PolyForm Noncommercial 1.0.0")
-                        Text("QQ 群：Code 开源技术交流群")
+                        Text("QQ 群：1076321843（Code 开源技术交流群）")
                         Text("仓库：github.com/crispvibe/Acode-Desktop")
                     }
                     .font(.system(size: 12))
@@ -1986,10 +2053,7 @@ struct SettingsPageView: View {
     }
 
     private nonisolated static func globalRuleURL(for kind: GlobalRuleKind) -> URL {
-        switch kind {
-        case .claude: claudeGlobalRulesURL
-        case .codex: codexGlobalRulesURL
-        }
+        realHomeDir.appendingPathComponent(kind.relativePath)
     }
 
     private nonisolated static func tomlValue(in text: String, key: String) -> String? {
@@ -2091,7 +2155,11 @@ struct SettingsPageView: View {
         }
         do {
             try FileManager.default.createDirectory(at: globalRuleURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try globalRuleText.write(to: globalRuleURL, atomically: true, encoding: .utf8)
+            var text = globalRuleText
+            if selectedGlobalRuleKind == .cursor, !text.hasPrefix("---") {
+                text = "---\nalwaysApply: true\n---\n\n" + text
+            }
+            try text.write(to: globalRuleURL, atomically: true, encoding: .utf8)
             globalRuleStatus = "已保存，重启 acode 或开启新 CLI 会话后生效"
         } catch {
             globalRuleStatus = "保存失败：\(error.localizedDescription)"

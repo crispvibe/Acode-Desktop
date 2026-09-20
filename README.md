@@ -2,38 +2,39 @@
 
 **中文** · [English](README_EN.md)
 
-> 手机 AI 编程——把 Claude Code / Codex 装进口袋。
+> 手机上的 AI 编程遥控器——把 Claude Code / Codex 装进口袋。
 
-开源的局域网 + 跨网直连 AI 编程工作台：在电脑上跑 Claude Code / Codex 对话，用手机直接连上去指挥它干活——同一 Wi-Fi 自动发现，跨网扫码配对。**无账号、无后端、无云端**，打开就能用。
+acode 是一个**免费开源**的 AI 编程工作台：AI 跑在你的电脑上，手机随时随地连上去指挥它干活。同一 Wi-Fi 自动发现，出门在外扫码直连，数据不出这两台设备。
 
-仓库：<https://github.com/crispvibe/Acode-Desktop> · QQ 群：[Code 开源技术交流群](https://qm.qq.com/q/yauE2vZ73y) · License：[PolyForm Noncommercial 1.0.0](LICENSE)（个人免费，禁止商用）
+仓库：<https://github.com/crispvibe/Acode-Desktop> · QQ 群：[1076321843](https://qm.qq.com/q/yauE2vZ73y) · License：[PolyForm Noncommercial 1.0.0](LICENSE)（个人免费，禁止商用）
 
 <p align="center">
-  <img src="文档/images/desktop-chat.png" alt="acode 电脑端" width="64%" />
-  <img src="文档/images/mobile-thread.png" alt="acode 手机端" width="31%" />
+  <img src="文档/images/desktop-chat.png" alt="acode 电脑端" width="96%" />
+</p>
+<p align="center">
+  <img src="文档/images/mobile-thread.png" alt="acode 手机端 · 对话" width="42%" />
+  <img src="文档/images/mobile-drawer.png" alt="acode 手机端 · 会话列表" width="42%" />
 </p>
 
 ## 下载
 
-| 平台 | 安装包（GitHub Releases 最新版直达） |
-|------|-----------------------------------|
-| macOS | [acode-macos-universal.dmg](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-macos-universal.dmg) |
-| Windows | [安装包 / 便携版](https://github.com/crispvibe/Acode-Desktop/releases/latest)（`acode-Setup-*-x64.exe` 安装包 / `acode-Portable-*-x64.exe` 免安装） |
-| Android | [acode-android-debug.apk](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-android-debug.apk) |
-| iOS | [acode-ios-unsigned.ipa](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-ios-unsigned.ipa)（未签名 IPA，需 TrollStore 或自签安装） |
+电脑端按芯片选包；全部产物见 [Releases 最新页](https://github.com/crispvibe/Acode-Desktop/releases/latest)。
 
-全部产物见 [Releases 最新页](https://github.com/crispvibe/Acode-Desktop/releases/latest)；Windows 包文件名带版本号，直达链接失效时到该页下载。
+| 平台 | 下载 | 选哪个 |
+|------|------|--------|
+| macOS | [Apple Silicon](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-macos-arm64.dmg) · [Intel](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-macos-x64.dmg) | 2020 年后的 M 芯片 Mac 下 Apple Silicon 版；老款 Intel Mac 下 Intel 版 |
+| Windows | [安装包 / 便携版](https://github.com/crispvibe/Acode-Desktop/releases/latest) | 绝大多数电脑下 `Setup-*-x64.exe`；骁龙等 ARM 设备下 `*-arm64.exe`；免安装选 `Portable-*` |
+| Android | [acode-android-debug.apk](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-android-debug.apk) | 直接安装 |
+| iOS | [acode-ios-unsigned.ipa](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-ios-unsigned.ipa) | 未签名 IPA，需 TrollStore 或自签安装 |
 
 ## 它能干什么
 
-- 📱 **手机指挥电脑里的 AI**：发任务、看进度、批权限、回答 AI 的提问，人不在电脑前也能让 AI 继续写代码
-- 🔌 **零配置连接**：同一 Wi-Fi 下自动发现电脑，点击即连；也可以手动输入 `IP:18765`；跨网直连（IPv6 / 端口映射 + 扫码配对）已支持
-- 🛠 **每一步都看得见**：任务清单、读文件、搜索、diff、终端命令、子代理，全部渲染成对应的卡片
-- ⚡ **主流 CLI 全接入**：Claude Code、Codex、Cursor Agent、Gemini、Qwen Code、Copilot、Kimi、Antigravity、Kiro——想用哪个切哪个，模型和推理强度在对话里随手调
-- 🔓 **没有账号体系**：不注册、不登录、不过云，打开就完事
-- 🖥 **四端**：macOS / Windows 当电脑端，iOS / Android 当手机端
-
-已内置 9 家主流 CLI 适配；还想接别的（Aider、OpenCode、Goose 等）欢迎 PR——host 端加一个适配器即可。
+- 📱 **手机指挥电脑 AI**：AI 在电脑上跑，发任务、看进度、批权限、回答问题，人不在电脑前活照样干
+- 🔌 **零配置连接**：同一 Wi-Fi 自动发现电脑，点一下就连上；出门在外扫码配对，IPv6 / 端口映射直连，不经过第三方服务器
+- 🛠 **每一步都看得见**：任务清单、读文件、搜索、diff、终端命令、子代理，全都渲染成卡片
+- ⚡ **9 家 CLI 随心切**：Claude Code、Codex、Cursor Agent、Gemini、Qwen Code、Copilot、Kimi、Antigravity、Kiro，模型和推理强度在对话里随手调
+- � **免费开源**：个人使用完全免费，代码全部公开，想接别的 CLI（Aider、OpenCode、Goose…）欢迎 PR
+- 🖥 **四端齐全**：macOS / Windows 当电脑端，iOS / Android 当手机端
 
 ## 快速开始
 
@@ -67,9 +68,9 @@ open "iOS版本/Codevoke.xcodeproj"
 
 ## 跨网直连
 
-同一 Wi-Fi 之外也能直连，**不经过任何第三方服务器**：电脑端枚举全球 IPv6、或用 NAT-PMP / UPnP 让路由器自动映射端口；手机扫电脑端设置页的二维码（或粘贴连接串）完成配对，局域网内也可以输入 6 位数字码配对。
+不在同一 Wi-Fi 也能连，**不经过任何第三方服务器**：电脑端自动枚举全球 IPv6，或用 NAT-PMP / UPnP 让路由器映射端口；手机扫电脑端设置页的二维码（或粘贴连接串）完成配对，局域网内也可输入 6 位数字码。
 
-两端都没有 IPv6 且没有公网 IPv4 时无法直连，App 会明确提示。方案细节见 `文档/remote-chat-wan-direct.md`。
+两端都没有 IPv6 和公网 IPv4 时无法直连，App 会明确提示。细节见 `文档/remote-chat-wan-direct.md`。
 
 ## 目录结构
 
@@ -90,7 +91,7 @@ open "iOS版本/Codevoke.xcodeproj"
 
 目前绝大部分代码是作者一个人写的，也感谢参与过的贡献者 [@909693mr.zeng](https://github.com/909693)，以及每一位提过建议的朋友。
 
-觉得有用就点个 Star，想一起玩就加 QQ 群：[Code 开源技术交流群](https://qm.qq.com/q/yauE2vZ73y)。
+觉得有用就点个 Star，想一起玩就加 QQ 群 [1076321843](https://qm.qq.com/q/yauE2vZ73y)。
 
 ## License
 
