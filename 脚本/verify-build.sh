@@ -23,11 +23,11 @@ echo "==> xcodebuild acode"
 xcodebuild -project "Mac版本/Codevoke.xcodeproj" -scheme Codevoke -configuration Debug \
   -destination 'platform=macOS' build -quiet
 
-echo "==> xcodebuild test Codevoke"
+echo "==> xcodebuild test acode"
 xcodebuild test -project "Mac版本/Codevoke.xcodeproj" -scheme Codevoke \
   -destination 'platform=macOS' -quiet
 
-echo "==> xcodebuild Codevoke Release universal"
+echo "==> xcodebuild acode Release universal"
 MAC_VERIFY_DERIVED_DATA="$ROOT/build/VerifyMacUniversal"
 xcodebuild -project "Mac版本/Codevoke.xcodeproj" -scheme Codevoke -configuration Release \
   -destination 'generic/platform=macOS' \

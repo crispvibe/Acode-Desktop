@@ -11,7 +11,7 @@ QQ 交流群：[Code 开源技术交流群](https://qm.qq.com/q/yauE2vZ73y)
 
 <p align="center">
   <img src="文档/images/desktop-chat.png" alt="acode 电脑端：工具卡片对话" width="68%" />
-  <img src="文档/images/mobile-chat.png" alt="acode 手机端界面示意" width="27%" />
+  <img src="文档/images/mobile-thread.png" alt="acode 手机端真机截图" width="27%" />
 </p>
 
 ## 为什么用 acode
@@ -27,9 +27,9 @@ QQ 交流群：[Code 开源技术交流群](https://qm.qq.com/q/yauE2vZ73y)
 
 ## 界面
 
-| 桌面工作台（项目 + 文件树 + 编辑器 + 对话） | 工具对话（任务清单 / diff / 终端） | 手机端（示意） |
+| 桌面工作台（项目 + 文件树 + 编辑器 + 对话） | 工具对话（任务清单 / diff / 终端） | 手机端真机截图 |
 | :---: | :---: | :---: |
-| ![桌面工作台](文档/images/desktop-editor.png) | ![工具卡片](文档/images/desktop-tools.png) | ![手机端](文档/images/mobile-chat.png) |
+| ![桌面工作台](文档/images/desktop-editor.png) | ![工具卡片](文档/images/desktop-tools.png) | ![手机端](文档/images/mobile-drawer.png) |
 
 ## 快速开始
 

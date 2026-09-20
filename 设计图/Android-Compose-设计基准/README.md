@@ -5,25 +5,23 @@
 ## 截图
 
 - `screenshots/01-chat-sidebar-overlay.png`：聊天页 + 左侧项目/模型/会话/文件抽屉。
-- `screenshots/02-remote-device-list.png`：远程设备页。
 - `screenshots/03-chat-thread.png`：聊天消息流。
-- `screenshots/04-chat-thread-duplicate-reference.png`：聊天消息流补充参考。
 
 ## 已落地到 Android 的页面
 
 - 聊天主屏：顶部玻璃栏、消息列表、黑色用户气泡、底部输入栏、左侧抽屉。
-- 远程设备页：标题栏、分段控件、设备卡片、输入设备码卡片。
+- 远程设备页：标题栏、局域网自动扫描、设备卡片、手动输入 IP:端口 卡片。
 - 设置页：三组玻璃卡片、菜单行、图标、分隔线。
 
 ## iOS 证据
 
-- 色彩、玻璃、圆角、阴影：`iOS版本/Codevoke/Codevoke/Views/VisualStyle.swift`
-- 聊天顶部栏、消息列表、空态、底部输入栏：`iOS版本/Codevoke/Codevoke/Views/ChatView.swift`
-- 输入框、附件按钮、发送按钮：`iOS版本/Codevoke/Codevoke/Views/InputBarView.swift`
-- 左侧抽屉：`iOS版本/Codevoke/Codevoke/Views/SidebarView.swift`
-- 侧栏遮罩、宽度、边缘手势：`iOS版本/Codevoke/Codevoke/Views/RootView.swift`
-- 远程设备：`iOS版本/Codevoke/Codevoke/Views/DeviceListView.swift`
-- 设置页：`iOS版本/Codevoke/Codevoke/Views/SettingsView.swift`
+- 色彩、玻璃、圆角、阴影：`iOS版本/Codevoke/Views/VisualStyle.swift`
+- 聊天顶部栏、消息列表、空态、底部输入栏：`iOS版本/Codevoke/Views/ChatView.swift`
+- 输入框、附件按钮、发送按钮：`iOS版本/Codevoke/Views/InputBarView.swift`
+- 左侧抽屉：`iOS版本/Codevoke/Views/SidebarView.swift`
+- 侧栏遮罩、宽度、边缘手势：`iOS版本/Codevoke/Views/RootView.swift`
+- 远程设备：`iOS版本/Codevoke/Views/DeviceListView.swift`
+- 设置页：`iOS版本/Codevoke/Views/SettingsView.swift`
 
 ## 还原硬规则
 
@@ -45,16 +43,12 @@
 
 ## iOS -> Android Token 对照
 
-- `Color.acodeInk` -> `CodevokeColor.Ink`：`#141414`。
-- `Color.acodeMuted` -> `CodevokeColor.Muted`：`#6B6B6B`。
+- `Color.codevokeInk` -> `CodevokeColor.Ink`：`#141414`。
+- `Color.codevokeMuted` -> `CodevokeColor.Muted`：`#6B6B6B`。
 - `Color.codevokeGlassFill` -> `CodevokeColor.GlassFill`：white 52%。
 - `Color.codevokeGlassStroke` -> `CodevokeColor.GlassStroke`：white 74%。
-- `Color.acodeAuthGlassFill` -> `CodevokeColor.AuthGlassFill`：white 68%。
-- `Color.acodeAuthGlassStroke` -> `CodevokeColor.AuthGlassStroke`：white 88%。
-- `GlassCard(cornerRadius: 28)` -> `CodevokeGlassCard(corner = CodevokeRadius.Chrome)`。
-- `AuthLiquidCard(cornerRadius: 30)` -> `CodevokeRadius.Sheet` + `CodevokeColor.AuthGlassFill`。
-- `AuthPrimaryButton(minHeight: 52, cornerRadius: 26)` -> `BlackCapsuleButton` + `CodevokeSize.PrimaryButtonHeight` + `CodevokeRadius.CircleControl`。
-- `.buttonStyle(.acodePress)` -> `CodevokeMotion.PressScale` / `CodevokeAlpha.PressedOpacity` / `CodevokeMotion.PressMillis`。
+- `codevokeGlass(cornerRadius: 28)` -> `CodevokeGlassCard(corner = CodevokeRadius.Chrome)`。
+- `.buttonStyle(.codevokePress)` -> `CodevokeMotion.PressScale` / `CodevokeAlpha.PressedOpacity` / `CodevokeMotion.PressMillis`。
 
 ## 后续页面实现要求
 

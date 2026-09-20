@@ -185,7 +185,7 @@ if [[ "$CREATE_DMG" == "1" ]]; then
   log "creating DMG: $DMG_PATH"
   mkdir -p "$(dirname "$DMG_PATH")"
   rm -f "$DMG_PATH"
-  DMG_STAGING="$(mktemp -d "${TMPDIR:-/tmp}/codevoke-dmg.XXXXXX")"
+  DMG_STAGING="$(mktemp -d "${TMPDIR:-/tmp}/acode-dmg.XXXXXX")"
   trap 'rm -rf "${DMG_STAGING:-}"' EXIT
   ditto "$DESTINATION" "$DMG_STAGING/$APP_NAME.app"
   hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_PATH"

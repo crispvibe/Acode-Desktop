@@ -31,7 +31,6 @@ Compose 颜色入口是 `CodevokeColor`。
 - `GlassFill`: white 52%，用于圆形按钮、输入栏等轻玻璃控件。
 - `GlassPanel`: white 72%，用于模型弹层、浮层、较亮玻璃面。
 - `GlassCardFill`: white 82%，用于主卡片。
-- `AuthGlassFill`: white 68%，用于登录/注册表单卡片和输入框。
 - `Hairline`: black 5.5%，用于顶部栏细描边。
 - `Line`: black 8%，用于设置分隔线。
 - `GlassCardHairline`: black 4.5%，用于白卡片外层弱描边。
@@ -73,7 +72,7 @@ Compose 圆角入口是 `CodevokeRadius`。
 - `Control`: 24dp，分段控件和普通胶囊。
 - `CircleControl`: 26dp，52dp 圆形按钮和主按钮胶囊。
 - `Chrome`: 28dp，顶部栏、主卡片、sheet。
-- `Sheet`: 30dp，大型面板、侧栏、认证卡。
+- `Sheet`: 30dp，大型面板、侧栏。
 
 禁止项：
 - 不要随手写 17dp、19dp、23dp 这类无证据圆角。
@@ -83,7 +82,7 @@ Compose 圆角入口是 `CodevokeRadius`。
 
 Compose 字号入口是 `CodevokeType`。
 
-- `Hero`: 28sp，登录页标题、远程设备大标题。
+- `Hero`: 28sp，远程设备大标题。
 - `NavTitle` / `Title`: 17sp，顶部标题、区块标题。
 - `Body`: 15sp，输入框、主按钮、设置行标题。
 - `BodySmall`: 14sp，聊天正文、侧栏行标题。
@@ -106,7 +105,7 @@ Compose 字号入口是 `CodevokeType`。
 
 Compose 间距入口是 `CodevokeSpace`，固定尺寸入口是 `CodevokeSize`。
 
-- 页面水平边距：16dp，登录/远程设备可用 18dp。
+- 页面水平边距：16dp，远程设备页可用 18dp。
 - 页面顶部节奏：22dp。
 - 区块间距：16dp，侧栏区块 18dp。
 - 设置行内边距：14dp x 13dp。
@@ -159,13 +158,6 @@ Compose 间距入口是 `CodevokeSpace`，固定尺寸入口是 `CodevokeSize`�
 - 输入框圆角 26dp，white 52%，white 72% 描边，阴影 black 8%。
 - 附件菜单：white 72%，圆角 22dp，阴影 black 12%。
 
-认证页：
-- Logo 66dp，圆角 18dp。
-- 标题 28sp SemiBold rounded-like。
-- 表单卡圆角 30dp，white 68%，描边 white 88%，阴影 black 6% radius 22dp。
-- 输入框标题 12sp Medium，输入文字 15sp Medium。
-- 输入框内边距 14dp x 13dp，圆角 18dp。
-
 ## 交互反馈
 
 Compose 交互入口是 `CodevokeMotion` 与 `CodevokeAlpha`。
@@ -183,9 +175,7 @@ Compose 交互入口是 `CodevokeMotion` 与 `CodevokeAlpha`。
 当前截图均为 1290 x 2796：
 
 - `01-chat-sidebar-overlay.png`：聊天页 + 左侧抽屉。
-- `02-remote-device-list.png`：远程设备页。
 - `03-chat-thread.png`：聊天消息流。
-- `04-chat-thread-duplicate-reference.png`：聊天消息流补充参考。
 
 实现页面时必须先对照对应截图，再读 iOS 源码确认细节。截图负责视觉位置感，源码负责精确 token。
 

@@ -1,14 +1,17 @@
 # Remote Chat V2 Protocol
 
+> 定位：本文档描述 recovery RPC 与 legacy 事件信封层（V1/V2 兼容字段仍在线缆上保留）。
+> 现行面板协议（snapshot/patch + command/command_ack）见 `文档/remote-chat-vnc-refactor.md`。
+
 ## Boundary
 
-Remote Chat keeps HTTP and WebSocket together.
+Remote Chat keeps HTTP and WebSocket together on the LAN.
 
 - Recovery RPC is the authoritative read path for catalog, sessions, messages,
-  files, and attachments. It can be carried by HTTP, WebSocket, or WebRTC
-  DataChannel so relay/P2P clients have the same read semantics as LAN clients.
-- WebSocket/DataChannel live frames are the control path: commands, command
-  ack, queue updates, turn events, output deltas, snapshots, and heartbeats.
+  files, and attachments. It is carried by HTTP/WebSocket only — acode 为纯局域网
+  直连，不存在 relay/P2P/WebRTC 传输层。
+- WebSocket live frames are the control path: commands, command ack, queue
+  updates, turn events, output deltas, snapshots, and heartbeats.
 
 The iOS app is a remote controller and live viewer. Mac remains the execution owner.
 
@@ -60,9 +63,5 @@ history views, then let live `panel_state` frames refine the active session.
 
 ## Migration Plan
 
-1. Add V2 envelope fields while keeping V1 event bodies.
-2. Gate iOS connected state on `hello`.
-3. Add command ack and replay truncation handling.
-4. Move Mac publication behind a committed event bus/store.
-5. Move iOS from one global cursor to per-stream cursor state.
-6. Persist the event log so disconnected iOS and late Mac UI panels can replay the same truth source.
+已全部完成并被面板镜像方案取代（snapshot/patch，见 `文档/remote-chat-vnc-refactor.md`）。
+本节的 V2 信封与 `recovery_*` RPC 继续在线缆上保留用于兼容与读路径。

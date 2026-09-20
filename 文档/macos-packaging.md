@@ -2,8 +2,8 @@
 
 ## 当前本地测试策略
 
-- 交付物：`Codevoke.app`
-- 默认输出：`~/Desktop/Codevoke.app`
+- 交付物：`acode.app`
+- 默认输出：`~/Desktop/acode.app`
 - 默认 DMG：`build/releases/acode-macos.dmg`
 - 构建配置：`Release`
 - 默认架构：Universal（`arm64 x86_64`）
@@ -20,10 +20,10 @@
 脚本会：
 
 1. 检查本机是否存在 `<Developer ID Application identity>` 证书。
-2. 使用 `Mac版本/Codevoke.xcodeproj` / `acode` scheme 构建 Universal Release。
+2. 使用 `Mac版本/Codevoke.xcodeproj` / `Codevoke` scheme 构建 Universal Release。
 3. 校验构建产物主程序和内嵌 framework 的 `arm64 x86_64` 架构。
 4. 校验构建产物的 `codesign` 签名和 `TeamIdentifier=<TEAM_ID>`。
-5. 替换桌面 `~/Desktop/Codevoke.app`。
+5. 替换桌面 `~/Desktop/acode.app`。
 6. 再次校验桌面产物架构和签名。
 7. 生成并签名 `build/releases/acode-macos.dmg`。
 8. 正式发布前按 `文档/macos-notarization.md` 提交 Apple 公证并 staple 票据。
@@ -33,7 +33,7 @@
 必须通过：
 
 - `xcodebuild` Release build 成功。
-- `lipo -archs Codevoke.app/Contents/MacOS/acode` 同时包含 `arm64` 和 `x86_64`。
+- `lipo -archs acode.app/Contents/MacOS/acode` 同时包含 `arm64` 和 `x86_64`。
 - 内嵌 Mach-O framework 至少包含 `x86_64`，默认应为 `arm64 x86_64`。
 - `codesign --verify --deep --strict` 通过。
 - `codesign -dv --verbose=4` 里出现：
@@ -42,7 +42,7 @@
 
 正式发布必须通过：
 
-- `xcrun notarytool submit build/releases/acode-macos.dmg --keychain-profile "acode-notary" --wait` 返回 `Accepted`。
+- `xcrun notarytool submit build/releases/acode-macos.dmg --keychain-profile "codevoke-notary" --wait` 返回 `Accepted`。
 - `xcrun stapler validate build/releases/acode-macos.dmg` 通过。
 - `spctl -a -vv -t open --context context:primary-signature build/releases/acode-macos.dmg` 返回 `accepted / Notarized Developer ID`。
 

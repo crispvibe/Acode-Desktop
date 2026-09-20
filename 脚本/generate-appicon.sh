@@ -15,8 +15,8 @@ if [[ ! -f "$source_png" ]]; then
   exit 1
 fi
 
-work_dir="$(mktemp -d "${TMPDIR:-/tmp}/claudemac-appicon.XXXXXX")"
-backup_dir="$(mktemp -d "${TMPDIR:-/tmp}/claudemac-appicon-backup.XXXXXX")"
+work_dir="$(mktemp -d "${TMPDIR:-/tmp}/acode-appicon.XXXXXX")"
+backup_dir="$(mktemp -d "${TMPDIR:-/tmp}/acode-appicon-backup.XXXXXX")"
 source_copy="$work_dir/source.png"
 cp "$source_png" "$source_copy"
 find "$appicon_dir" -maxdepth 1 -type f \( -name '*.png' -o -name 'Contents.json' \) -exec cp {} "$backup_dir" \;

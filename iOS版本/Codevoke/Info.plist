@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Codevoke</string>
+	<string>acode</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -20,7 +20,7 @@
 		<string>zh-Hans</string>
 	</array>
 	<key>CFBundleName</key>
-	<string>Codevoke</string>
+	<string>acode</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CFBundlePackageType</key>
@@ -32,9 +32,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Codevoke 需要使用相机拍摄照片并作为附件上传。</string>
+	<string>acode 需要使用相机拍摄照片并作为附件上传。</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Codevoke 需要访问本地网络，以连接你已授权的电脑端 Codevoke。</string>
+	<string>acode 需要访问本地网络，以连接你已授权的电脑端 acode。</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchScreen</key>

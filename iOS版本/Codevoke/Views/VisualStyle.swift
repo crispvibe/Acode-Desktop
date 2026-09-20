@@ -10,8 +10,6 @@ extension Color {
     static let codevokeGlassFill = Color.white.opacity(0.52)
     static let codevokeGlassStroke = Color.white.opacity(0.74)
     static let codevokeHairline = Color.black.opacity(0.055)
-    static let codevokeAuthGlassFill = Color.white.opacity(0.68)
-    static let codevokeAuthGlassStroke = Color.white.opacity(0.88)
 }
 
 extension Animation {
@@ -44,29 +42,6 @@ extension View {
             self
                 .background(.ultraThinMaterial, in: Circle())
                 .background(Color.codevokeGlassFill, in: Circle())
-        }
-    }
-
-    @ViewBuilder
-    func codevokeAuthGlass(cornerRadius: CGFloat) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular, in: shape)
-        } else {
-            self
-                .background(.ultraThinMaterial, in: shape)
-                .background(Color.codevokeAuthGlassFill, in: shape)
-        }
-    }
-
-    @ViewBuilder
-    func codevokeAuthCircleGlass() -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular, in: Circle())
-        } else {
-            self
-                .background(.ultraThinMaterial, in: Circle())
-                .background(Color.codevokeAuthGlassFill, in: Circle())
         }
     }
 

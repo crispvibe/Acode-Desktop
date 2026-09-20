@@ -38,7 +38,7 @@ struct CodevokeApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .appInfo) {
-                Button("关于 Codevoke") {
+                Button("关于 acode") {
                     NSApp.orderFrontStandardAboutPanel(nil)
                 }
             }

@@ -1,2 +1,2 @@
-"NSCameraUsageDescription" = "Codevoke 需要使用相机拍摄照片并作为附件上传。";
-"NSLocalNetworkUsageDescription" = "Codevoke 需要访问本地网络，以连接你已授权的电脑端 Codevoke。";
+"NSCameraUsageDescription" = "acode 需要使用相机拍摄照片并作为附件上传。";
+"NSLocalNetworkUsageDescription" = "acode 需要访问本地网络，以连接你已授权的电脑端 acode。";

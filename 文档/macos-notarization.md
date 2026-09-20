@@ -3,25 +3,24 @@
 ## 当前状态
 
 - 目标产物：`build/releases/acode-macos.dmg`
-- App bundle：`Codevoke.app`
+- App bundle：`acode.app`
 - Bundle ID：`com.codevoke.mac`
-- Apple ID：`99400504@qq.com`
+- Apple ID：`$APPLE_ID`（你的 Apple 开发者账号邮箱）
 - Team ID：`$CODEVOKE_TEAM_ID`
 - Developer ID 证书：`$CODEVOKE_SIGNING_AUTHORITY`
-- notarytool Keychain profile：`acode-notary`
+- notarytool Keychain profile：`codevoke-notary`
 - 默认架构：Universal（`arm64 x86_64`）
-- WebRTC framework：已验证包含 `x86_64 arm64`
 
-`acode-notary` 已通过 App 专用密码验证并保存到本机 Keychain。不要把 App 专用密码明文写入仓库、脚本或命令历史；需要更新密码时重新执行 `store-credentials` 覆盖同名 profile。
+`codevoke-notary` 通过 App 专用密码验证并保存到本机 Keychain。不要把 App 专用密码明文写入仓库、脚本或命令历史；需要更新密码时重新执行 `store-credentials` 覆盖同名 profile。
 
 > 安全提醒：如果 App 专用密码曾经出现在仓库、聊天记录、截图或命令历史里，先到 Apple ID 后台撤销旧密码并重新生成，再用下面的 `store-credentials` 覆盖本机 Keychain profile。
 ## 一次性凭据配置
 
-如果本机 Keychain 已存在 `acode-notary`，不用重复配置。缺失或密码轮换后执行：
+如果本机 Keychain 已存在 `codevoke-notary`，不用重复配置。缺失或密码轮换后执行：
 
 ```bash
-xcrun notarytool store-credentials "acode-notary" \
-  --apple-id "99400504@qq.com" \
+xcrun notarytool store-credentials "codevoke-notary" \
+  --apple-id "$APPLE_ID" \
   --team-id "$CODEVOKE_TEAM_ID"
 ```
 
@@ -30,7 +29,7 @@ xcrun notarytool store-credentials "acode-notary" \
 ```text
 Success. Credentials validated.
 Credentials saved to Keychain.
-To use them, specify `--keychain-profile "acode-notary"`
+To use them, specify `--keychain-profile "codevoke-notary"`
 ```
 
 ## 标准打包
@@ -42,11 +41,11 @@ To use them, specify `--keychain-profile "acode-notary"`
 脚本会执行：
 
 1. 检查本机 Developer ID 签名证书。
-2. 使用 `Mac版本/Codevoke.xcodeproj` / `acode` scheme 构建 Release。
+2. 使用 `Mac版本/Codevoke.xcodeproj` / `Codevoke` scheme 构建 Release。
 3. 强制 Universal 构建：`ARCHS="arm64 x86_64"`、`ONLY_ACTIVE_ARCH=NO`。
 4. 用 `lipo` 校验主程序和内嵌 Mach-O framework 架构。
 5. 对内嵌 `.framework` 使用 Developer ID、Hardened Runtime、secure timestamp 重签。
-6. 对 `Codevoke.app` 使用 `Mac版本/Codevoke/Codevoke.entitlements`、Developer ID、Hardened Runtime、secure timestamp 重签。
+6. 对 `acode.app` 使用 `Mac版本/Codevoke/Codevoke.entitlements`、Developer ID、Hardened Runtime、secure timestamp 重签。
 7. 校验 `codesign --verify --deep --strict`、签名 Authority 和 Team ID。
 8. strip 发布包符号、校验无 debug entitlement，生成并签名 `build/releases/acode-macos.dmg`。
 
@@ -60,7 +59,7 @@ NOTARIZE=1 脚本/package-macos-app.sh
 
 ```bash
 xcrun notarytool submit build/releases/acode-macos.dmg \
-  --keychain-profile "acode-notary" \
+  --keychain-profile "codevoke-notary" \
   --wait \
   --timeout 30m
 ```
@@ -75,7 +74,7 @@ status: Accepted
 
 ```bash
 xcrun notarytool log <submission-id> \
-  --keychain-profile "acode-notary" \
+  --keychain-profile "codevoke-notary" \
   notarization-log.json
 ```
 
@@ -123,7 +122,7 @@ origin=<Developer ID Application identity>
 验证 App bundle：
 
 ```bash
-spctl -a -vv ~/Desktop/Codevoke.app
+spctl -a -vv ~/Desktop/acode.app
 ```
 
 期望：
@@ -146,29 +145,6 @@ hdiutil verify build/releases/acode-macos.dmg
 checksum of "build/releases/acode-macos.dmg" is VALID
 ```
 
-## 已跑通过的本机证据
-
-临时测试产物：
-
-- App：`/tmp/CodevokeIntelCheck.app`
-- DMG：`/tmp/acode-macos-intel-check.dmg`
-
-第一次提交结果：
-
-- Submission ID：`8c7ac025-f86d-4478-a2df-d9e05ad9a519`
-- 状态：`Invalid`
-- 原因：主程序和 WebRTC framework 的签名缺少 secure timestamp。
-
-修复后提交结果：
-
-- Submission ID：`260ee028-d3d0-4059-9a19-2e31b18763c2`
-- 状态：`Accepted`
-- `xcrun stapler staple /tmp/acode-macos-intel-check.dmg`：通过
-- `xcrun stapler validate /tmp/acode-macos-intel-check.dmg`：通过
-- `spctl -a -vv /tmp/CodevokeIntelCheck.app`：`accepted / Notarized Developer ID`
-- `spctl -a -vv -t open --context context:primary-signature /tmp/acode-macos-intel-check.dmg`：`accepted / Notarized Developer ID`
-- `hdiutil verify /tmp/acode-macos-intel-check.dmg`：checksum valid
-
 ## 正式发布顺序
 
 ```bash
@@ -179,7 +155,7 @@ NOTARIZE=1 脚本/package-macos-app.sh
 
 ```bash
 xcrun notarytool submit build/releases/acode-macos.dmg \
-  --keychain-profile "acode-notary" \
+  --keychain-profile "codevoke-notary" \
   --wait \
   --timeout 30m
 
@@ -189,4 +165,4 @@ spctl -a -vv -t open --context context:primary-signature build/releases/acode-ma
 hdiutil verify build/releases/acode-macos.dmg
 ```
 
-全部通过后，`build/releases/acode-macos.dmg` 才是可上传到 `/downloads/acode-macos.dmg` 的正式 macOS 安装包。
+全部通过后，`build/releases/acode-macos.dmg` 即可作为正式 macOS 安装包分发（如发布到 GitHub Releases）。

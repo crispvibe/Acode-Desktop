@@ -97,7 +97,7 @@ fun CodevokeApp() {
             connectionStatus = vm.chat.connectionStatus,
             runtimeStatus = vm.chat.runtimeStatus,
             transportLabel = vm.transportLabel,
-            topTitle = vm.chat.selectedProject?.name ?: "Codevoke",
+            topTitle = vm.chat.selectedProject?.name ?: "acode",
             messages = vm.chat.messages,
             streamingTexts = vm.chat.streamingTexts,
             projects = vm.chat.projects,

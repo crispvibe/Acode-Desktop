@@ -20,8 +20,6 @@ object CodevokeColor {
     val GlassCardFill = Color(0xD1FFFFFF)
     val GlassCardStroke = Color(0xD1FFFFFF)
     val GlassCardHairline = Color(0x0B000000)
-    val AuthGlassFill = Color(0xADFFFFFF)
-    val AuthGlassStroke = Color(0xE0FFFFFF)
     val ControlFill = Color(0x6BFFFFFF)
     val ControlBrightFill = Color(0xC2FFFFFF)
     val Scrim = Color(0x3D000000)

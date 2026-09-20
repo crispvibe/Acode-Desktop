@@ -1,6 +1,6 @@
 # Android Compose Tokens
 
-已写入 `Android/app/src/main/java/com/acode/android/ui/theme`。
+已写入 `安卓版本/app/src/main/java/com/codevoke/android/ui/theme`。
 
 ## Color
 
@@ -35,4 +35,4 @@
 
 - 不在 Composable 正文发网络/IO。
 - 页面先用静态状态还原视觉，再接 ViewModel/Repository/WebSocket。
-- 后续接入真实远程能力时，网络、WebSocket、WebRTC、后台任务必须进入 Android 原生层。
+- 后续接入真实远程能力时，网络、WebSocket、后台任务必须进入 Android 原生层。

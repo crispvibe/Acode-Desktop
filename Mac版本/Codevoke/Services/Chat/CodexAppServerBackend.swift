@@ -569,7 +569,7 @@ final class CodexAppServerBackend: ChatProcessBackend {
     }
 
     private func events(fromUnsupportedServerRequest object: [String: Any], id: Any, method: String) -> [ChatBackendEvent] {
-        let message = "Codevoke embedded Codex client does not support server request method: \(method)"
+        let message = "acode embedded Codex client does not support server request method: \(method)"
         let didWrite = sendErrorResponse(id: id, code: -32601, message: message)
         return [.appendMessage(
             kind: .rawOutput,

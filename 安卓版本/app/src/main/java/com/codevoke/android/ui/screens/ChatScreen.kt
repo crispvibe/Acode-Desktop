@@ -521,7 +521,7 @@ private fun MessageList(
                         Icon(Icons.Rounded.SmartToy, contentDescription = null, tint = CodevokeColor.Ink, modifier = Modifier.size(26.dp))
                         Text("准备开始远程对话", color = CodevokeColor.Ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "选择项目后，底部输入框会把消息发送到电脑端 Codevoke。",
+                            "选择项目后，底部输入框会把消息发送到电脑端 acode。",
                             color = CodevokeColor.Muted,
                             fontSize = 13.sp,
                             lineHeight = 20.sp,

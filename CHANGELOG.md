@@ -7,8 +7,8 @@
 - **目录中文化**：`Mac版本/`（macOS host）、`Windows版本/`（Electron host）、`iOS版本/`、`安卓版本/`、`共享代码/`（SwiftPM ChatCore/ChatUI）、`文档/`、`脚本/`、`设计图/`。
 - **品牌统一**：补齐遗漏的用户可见 Codevoke 文案为 acode（iOS/Android 关于页、macOS 权限弹窗与提示、/health 服务名）。
 - **许可变更**：MIT → PolyForm Noncommercial 1.0.0，仅限个人非商业使用，禁止商用；四端"关于"页加入版权与许可说明。
-- **清理**：删除旧账号体系相关文档与设计图（登录/注册设计图、三份旧体系审计报告、Windows 交接文档、progress.txt）。
-- **仓库**：更名为 `crispvibe/Acode-Desktop`。
+- **清理**：删除旧账号体系相关文档与设计图（登录/注册设计图、三份旧体系审计报告、Windows 交接文档、progress.txt）；删除官网设计稿与账号时代设备列表设计图；清理 iOS 本地化表中 130+ 条登录/注册/账号/设备码/信令/TURN 死文案，移除 `RemoteUserFacingText` 中已死的连接审批/权益映射方法与 `codevokeAuthGlass*` 死代码、Android `AuthGlass*` 死 token；脚本残留旧名统一为 acode。
+- **仓库**：更名为 `crispvibe/Acode-Desktop`，远端仅保留 `main` 单一分支。
 
 ## 0.3.0 · 开源化 + 纯局域网
 
@@ -26,7 +26,7 @@
 - macOS：`RemoteChatServer` 不再校验 token；移除账号/信令/LAN token 发布/隧道/WebRTC。
 - iOS：移除登录门与云端 transport；`LanSubnetProbe.discoverHealthHosts` + 手动连接；`remote.*` 旧 UserDefaults 键自动清理。
 - Android：同上；`RemoteChatConfig` 简化为 `host + port`；去掉 stream-webrtc-android / security-crypto 依赖。
-- Windows：移除 `account/`、`signaling/`、`device/`、`remoteChat/` 与隧道/WebRTC responder；`RemoteHostServer` 无鉴权；设置页仅保留 LAN host 开关；`appId` → `com.codevoke.windows`。
+- Windows：移除 `account/`、`signaling/`、`device/`、`remoteChat/` 与隧道/WebRTC responder；`RemoteHostServer` 无鉴权；设置页仅保留 LAN host 开关；`appId` → `com.acode.windows`。
 
 ## 0.2.0 · 局域网多端
 
