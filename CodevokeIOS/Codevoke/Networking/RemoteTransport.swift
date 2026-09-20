@@ -3,10 +3,9 @@ import ChatCore
 
 /// Common client transport used by ChatViewModel for VNC JSON frames.
 ///
-/// Implementations may be the existing LAN WebSocket path or a future WebRTC
-/// DataChannel path. The callbacks intentionally mirror RemoteWebSocketClient
-/// so UI, reconnect, resume/replay, ack handling and FIFO send behavior stay
-/// unchanged while transports evolve underneath.
+/// The LAN WebSocket path is the only transport today. The callbacks
+/// intentionally mirror RemoteWebSocketClient so UI, reconnect, resume/replay,
+/// ack handling and FIFO send behavior stay unchanged if transports evolve.
 @MainActor
 protocol RemoteTransport: AnyObject {
     var isConnected: Bool { get }

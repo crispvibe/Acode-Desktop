@@ -28,6 +28,7 @@ export const remoteRecoveryLimits = {
 
 export const chatMessageAttachmentSchema = z.object({
   id: uuidSchema.optional(),
+  kind: z.enum(["file", "image"]).optional(),
   filename: z.string(),
   path: z.string(),
   mimeType: z.string().optional(),
@@ -267,10 +268,12 @@ export const commandAckSchema = z.object({
 
 export type CommandAck = z.infer<typeof commandAckSchema>;
 
+// iOS Codable 会省略 nil 字段、Android JSONObject.put(k, null) 也会移除键，
+// 因此 sessionId/lastRevision 在客户端可能是缺省而不是 null，这里按 nullish 收。
 export const resumeRequestSchema = z.object({
   type: z.literal(remoteVNCFrameType.resume),
-  sessionId: uuidSchema.nullable(),
-  lastRevision: z.number().int().nonnegative().nullable()
+  sessionId: uuidSchema.nullish(),
+  lastRevision: z.number().int().nonnegative().nullish()
 });
 
 export type ResumeRequest = z.infer<typeof resumeRequestSchema>;

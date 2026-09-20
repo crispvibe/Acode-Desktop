@@ -59,11 +59,12 @@ struct RemoteUploadedAttachment: Identifiable, Hashable {
 
 // MARK: - Health
 
+// 各 host 的 /health 载荷不一致（Windows 端只回 {"status":"ok"}），字段全部按可选解。
 struct RemoteHealth: Codable {
-    let ok: Bool
-    let name: String
-    let version: Int
-    let bindLAN: Bool
-    let port: UInt16
-    let authRequired: Bool
+    let ok: Bool?
+    let name: String?
+    let version: Int?
+    let bindLAN: Bool?
+    let port: UInt16?
+    let authRequired: Bool?
 }

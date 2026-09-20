@@ -29,7 +29,6 @@
 		AC1000000000000000000044 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = AC4000000000000000000011 /* InfoPlist.strings */; };
 		ACHC00000000000000000001 /* ChatCore in Frameworks */ = {isa = PBXBuildFile; productRef = ACHC00000000000000000003 /* ChatCore */; };
 		ACHU00000000000000000001 /* ChatUI in Frameworks */ = {isa = PBXBuildFile; productRef = ACHU00000000000000000003 /* ChatUI */; };
-		ACWEBRTC000000000000001 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = ACWEBRTC000000000000003 /* WebRTC */; };
 			AC1000000000000000000031 /* DeviceListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000031 /* DeviceListViewModel.swift */; };
 			AC1000000000000000000032 /* DeviceConnectViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000032 /* DeviceConnectViewModel.swift */; };
 			AC1000000000000000000033 /* DeviceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000033 /* DeviceListView.swift */; };

@@ -36,7 +36,7 @@ enum LanSubnetProbe {
             for await found in group {
                 if let found { results.append(found) }
             }
-            if let preferredHost, !preferredHost.isEmpty {
+            if let preferredHost, !preferredHost.isEmpty, results.contains(preferredHost) {
                 results.removeAll { $0 == preferredHost }
                 results.insert(preferredHost, at: 0)
             }

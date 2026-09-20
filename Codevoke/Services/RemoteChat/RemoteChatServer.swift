@@ -623,6 +623,14 @@ final class RemoteChatServer {
         return true
     }
 
+    private static func recoveryRequestId(from data: Data) -> UUID? {
+        struct RequestIdEnvelope: Decodable { let requestId: UUID? }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let envelope = try? decoder.decode(RequestIdEnvelope.self, from: data) else { return nil }
+        return envelope.requestId
+    }
+
     private static func commandId(from data: Data) -> UUID? {
         struct CommandIdEnvelope: Decodable { let commandId: UUID? }
         let decoder = JSONDecoder()

@@ -373,7 +373,16 @@ export class RemoteHostServer {
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
     const pathname = requestPathname(req);
     if (pathname === "/health") {
-      this.writeJson(res, 200, { status: "ok" });
+      // 与 macOS host 同形，兼容按字段解码的客户端。
+      this.writeJson(res, 200, {
+        status: "ok",
+        ok: true,
+        name: "Codevoke Windows",
+        version: 1,
+        bindLAN: this.config.bindLAN,
+        port: this.config.port,
+        authRequired: false
+      });
       return;
     }
     if (pathname === "/attachments") {
@@ -605,7 +614,8 @@ export class RemoteHostServer {
   private handleResumeFrame(connection: HostConnection, raw: unknown): void {
     const result = resumeRequestSchema.safeParse(raw);
     if (!result.success) return;
-    const { sessionId, lastRevision } = result.data;
+    const sessionId = result.data.sessionId ?? null;
+    const lastRevision = result.data.lastRevision ?? null;
     if (sessionId) connection.focusedSessionId = sessionId;
 
     const payload = this.delegate.replayPayload(sessionId, lastRevision);

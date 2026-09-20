@@ -3,10 +3,38 @@ import ChatCore
 
 /// JSON codec for the Remote VNC control frames carried by any transport.
 ///
-/// Keeping encode/decode here prevents subtle drift between LAN WebSocket and
-/// WebRTC DataChannel implementations. It also keeps ChatViewModel transport-
+/// Keeping encode/decode here prevents subtle wire-format drift between
+/// transport implementations. It also keeps ChatViewModel transport-
 /// agnostic: transports emit already-decoded envelopes/acks and accept typed
 /// resume/command frames.
+enum RemoteDateFormatters {
+    /// ISO8601DateFormatter(.withInternetDateTime) 不接受毫秒小数（`.SSS`），
+    /// Windows host 以 `Date.toISOString()` 输出毫秒，这里两种格式都容忍。
+    static let fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    static let plain: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+}
+
+extension JSONDecoder.DateDecodingStrategy {
+    static let iso8601Tolerant = JSONDecoder.DateDecodingStrategy.custom { decoder in
+        let container = try decoder.singleValueContainer()
+        let string = try container.decode(String.self)
+        if let date = RemoteDateFormatters.fractional.date(from: string)
+            ?? RemoteDateFormatters.plain.date(from: string) {
+            return date
+        }
+        throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO-8601 date: \(string)")
+    }
+}
+
 struct RemoteTransportFrameCodec {
     enum DecodedFrame: Equatable {
         case panelState(PanelStateEnvelope)
@@ -25,7 +53,7 @@ struct RemoteTransportFrameCodec {
         self.encoder = encoder
 
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .iso8601Tolerant
         self.decoder = decoder
     }
 

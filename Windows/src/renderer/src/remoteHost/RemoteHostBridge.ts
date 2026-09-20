@@ -46,6 +46,18 @@ function toUUID(id: string): string {
   return UUID_REGEX.test(stripped) ? stripped : id;
 }
 
+/** 还原不出裸 UUID 时返回 null —— 避免把非 UUID 串发给严格按 UUID 解码的客户端。 */
+function toUUIDOrNull(id: string | null | undefined): string | null {
+  if (!id) return null;
+  const uuid = toUUID(id);
+  return UUID_REGEX.test(uuid) ? uuid : null;
+}
+
+/** iOS ISO8601DateFormatter 不接受毫秒小数；`Date.toISOString()` 输出 `.SSSZ`，统一抹掉。 */
+function toIsoSecond(value: string): string {
+  return value.replace(/\.\d+Z$/, "Z");
+}
+
 type ComposerState = {
   text: string;
   cli: ChatCLI | null;
@@ -156,9 +168,9 @@ class RemoteHostBridge {
       name: project.name,
       path: project.path,
       defaultCLI,
-      createdAt: project.createdAt,
-      updatedAt: project.updatedAt,
-      lastOpenedAt: project.lastOpenedAt
+      createdAt: toIsoSecond(project.createdAt),
+      updatedAt: toIsoSecond(project.updatedAt),
+      lastOpenedAt: project.lastOpenedAt ? toIsoSecond(project.lastOpenedAt) : null
     }));
     const projectIdByPath = new Map(projects.map((project) => [project.path, project.id] as const));
 
@@ -178,9 +190,9 @@ class RemoteHostBridge {
         modelID: session.modelID,
         runStatus: session.runStatus,
         statusText: session.statusText,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-        lastCompletedAt: session.lastCompletedAt ?? null,
+        createdAt: toIsoSecond(session.createdAt),
+        updatedAt: toIsoSecond(session.updatedAt),
+        lastCompletedAt: session.lastCompletedAt ? toIsoSecond(session.lastCompletedAt) : null,
         queuedCount: session.queuedRequests.length
       };
     });
@@ -194,16 +206,23 @@ class RemoteHostBridge {
       })
       .filter((value): value is NonNullable<typeof value> => value !== null);
 
+    // 对齐 ChatCore `ChatMessage` 的 CodingKeys：iOS 端严格按 UUID/日期/kind 解码，
+    // requestID、interactiveRequest、attachments 都是权限交互所需的字段。
     const messages = chat.messages.map((message) => ({
       id: toUUID(message.id),
+      sessionID: toUUIDOrNull(message.sessionID),
       kind: message.kind,
       text: message.text,
-      createdAt: message.createdAt,
+      createdAt: toIsoSecond(message.createdAt),
       title: message.title ?? "",
       subtitle: message.subtitle ?? "",
       status: message.status ?? "",
+      parentUserMessageID: toUUIDOrNull(message.parentUserMessageID),
       requestId: message.requestID ?? null,
-      isStreaming: message.isStreaming ?? false
+      requestID: message.requestID ?? null,
+      isStreaming: message.isStreaming ?? false,
+      interactiveRequest: message.interactiveRequest ?? null,
+      attachments: (message.attachments ?? []).map(toAttachmentDTO)
     }));
 
     const streamingTexts = chat.messages
@@ -231,7 +250,7 @@ class RemoteHostBridge {
       isLoadingHistory: false,
       tokensUsed: chat.tokensUsed,
       tokensTotal: chat.tokensTotal,
-      activeRunStartedAt: chat.runtime.activeRunStartedAt,
+      activeRunStartedAt: chat.runtime.activeRunStartedAt ? toIsoSecond(chat.runtime.activeRunStartedAt) : null,
       isMirroringRemoteSession: false,
       composer: this.buildComposer(chat.currentSession, chat.status, settings),
       capabilities: buildCapabilities()
@@ -345,7 +364,8 @@ class RemoteHostBridge {
         }
         return okOutcome(command);
       case "composerRemoveAttach":
-        this.composer.attachments = this.composer.attachments.filter((attachment) => attachment.id !== args.attachmentId);
+        // 下发的 DTO id 是裸 UUID，composer 内存里是 `attachment-<uuid>`，比较前先归一。
+        this.composer.attachments = this.composer.attachments.filter((attachment) => toUUID(attachment.id) !== args.attachmentId);
         return okOutcome(command);
       case "composerSend":
         return this.handleComposerSend(command);
@@ -484,7 +504,9 @@ function okOutcome(command: RemoteCommand): CommandOutcome {
 
 function toAttachmentDTO(attachment: ChatMessageAttachment): ChatMessageAttachmentDTO {
   return {
-    id: attachment.id,
+    // iOS 端按非空 UUID 解码 id；还原不出时生成一个，避免整条 envelope 解码失败。
+    id: toUUIDOrNull(attachment.id) ?? crypto.randomUUID(),
+    kind: attachment.kind,
     filename: attachment.filename,
     path: attachment.path,
     thumbnailData: attachment.thumbnailData ?? null
@@ -494,7 +516,7 @@ function toAttachmentDTO(attachment: ChatMessageAttachment): ChatMessageAttachme
 function fromAttachmentDTO(dto: ChatMessageAttachmentDTO): ChatMessageAttachment {
   return {
     id: dto.id ?? crypto.randomUUID(),
-    kind: "file",
+    kind: dto.kind ?? "file",
     filename: dto.filename,
     path: dto.path,
     thumbnailData: dto.thumbnailData ?? null

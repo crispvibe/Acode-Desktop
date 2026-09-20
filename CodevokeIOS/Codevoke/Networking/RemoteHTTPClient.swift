@@ -17,7 +17,7 @@ struct RemoteHTTPClient {
         self.session = session
         self.debugLog = debugLog
         decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .iso8601Tolerant
     }
 
     func fetchHealth() async throws -> RemoteHealth {

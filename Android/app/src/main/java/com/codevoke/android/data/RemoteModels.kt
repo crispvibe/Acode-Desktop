@@ -239,14 +239,25 @@ internal fun JSONObject.booleanOrNull(vararg keys: String): Boolean? {
     return null
 }
 
+// Windows host 把可空的 patch 标量编码为 {"value":...} 包装对象；macOS 直接给裸值。
 internal fun JSONObject.stringField(key: String): RemotePanelField<String>? {
     if (!has(key)) return null
-    return RemotePanelField(isPresent = true, value = if (isNull(key)) null else optString(key))
+    if (isNull(key)) return RemotePanelField(isPresent = true, value = null)
+    val wrapped = optJSONObject(key)
+    if (wrapped != null && wrapped.has("value")) {
+        return RemotePanelField(isPresent = true, value = if (wrapped.isNull("value")) null else wrapped.optString("value"))
+    }
+    return RemotePanelField(isPresent = true, value = optString(key))
 }
 
 internal fun JSONObject.intField(key: String): RemotePanelField<Int>? {
     if (!has(key)) return null
-    return RemotePanelField(isPresent = true, value = if (isNull(key)) null else optInt(key))
+    if (isNull(key)) return RemotePanelField(isPresent = true, value = null)
+    val wrapped = optJSONObject(key)
+    if (wrapped != null && wrapped.has("value")) {
+        return RemotePanelField(isPresent = true, value = if (wrapped.isNull("value")) null else wrapped.optInt("value"))
+    }
+    return RemotePanelField(isPresent = true, value = optInt(key))
 }
 
 internal fun JSONArray.objects(): List<JSONObject> = List(length()) { index -> optJSONObject(index) ?: JSONObject() }

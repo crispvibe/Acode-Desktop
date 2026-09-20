@@ -544,7 +544,7 @@ struct SettingsPageView: View {
         VStack(alignment: .leading, spacing: 14) {
             remoteSettingToggle(
                 title: "设备连接服务",
-                subtitle: remoteChatEnabled ? "允许设备码和同账号设备连接这台 Mac" : "关闭后其他设备不能连接这台 Mac",
+                subtitle: remoteChatEnabled ? "允许同一 Wi-Fi 下的设备连接这台 Mac" : "关闭后其他设备不能连接这台 Mac",
                 isOn: $remoteChatEnabled
             )
             if remoteChatEnabled {

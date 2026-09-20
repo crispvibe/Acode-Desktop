@@ -54,7 +54,6 @@
 		B0000000000000000000004A /* PanelStateBroadcasterAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000004A /* PanelStateBroadcasterAdapter.swift */; };
 		CHC000000000000000000001 /* ChatCore in Frameworks */ = {isa = PBXBuildFile; productRef = CHC000000000000000000003 /* ChatCore */; };
 		CHU000000000000000000001 /* ChatUI in Frameworks */ = {isa = PBXBuildFile; productRef = CHU000000000000000000003 /* ChatUI */; };
-		CWEBRTC000000000000001 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = CWEBRTC000000000000003 /* WebRTC */; };
 
 	/* End PBXBuildFile section */
 
@@ -129,7 +128,6 @@
 			files = (
 				CHC000000000000000000001 /* ChatCore in Frameworks */,
 				CHU000000000000000000001 /* ChatUI in Frameworks */,
-				CWEBRTC000000000000001 /* WebRTC in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -299,7 +297,6 @@
 			packageProductDependencies = (
 				CHC000000000000000000003 /* ChatCore */,
 				CHU000000000000000000003 /* ChatUI */,
-				CWEBRTC000000000000003 /* WebRTC */,
 			);
 			productName = Codevoke;
 			productReference = F00000000000000000000023 /* Codevoke.app */;
@@ -357,7 +354,6 @@
 			packageReferences = (
 				CHC000000000000000000002 /* XCLocalSwiftPackageReference "Shared/ChatCore" */,
 				CHU000000000000000000002 /* XCLocalSwiftPackageReference "Shared/ChatUI" */,
-				CWEBRTC000000000000002 /* XCRemoteSwiftPackageReference "WebRTC" */,
 			);
 			productRefGroup = G00000000000000000000008 /* Products */;
 			projectDirPath = "";
@@ -714,17 +710,6 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		CWEBRTC000000000000002 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/stasel/WebRTC";
-			requirement = {
-				kind = exactVersion;
-				version = 140.0.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
 /* Begin XCSwiftPackageProductDependency section */
 		CHC000000000000000000003 /* ChatCore */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -735,11 +720,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = CHU000000000000000000002 /* XCLocalSwiftPackageReference "Shared/ChatUI" */;
 			productName = ChatUI;
-		};
-		CWEBRTC000000000000003 /* WebRTC */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = CWEBRTC000000000000002 /* XCRemoteSwiftPackageReference "WebRTC" */;
-			productName = WebRTC;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

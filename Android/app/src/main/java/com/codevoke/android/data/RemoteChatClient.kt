@@ -99,10 +99,11 @@ class RemoteChatClient(
     }
 
     fun sendResume(sessionId: String?, lastRevision: Int?) {
+        // JSONObject.put(k, null) 会移除键；host 端 schema 要求键存在（值可为 null）。
         val frame = JSONObject()
             .put("type", "resume")
-            .put("sessionId", sessionId)
-            .put("lastRevision", lastRevision)
+            .put("sessionId", sessionId ?: JSONObject.NULL)
+            .put("lastRevision", lastRevision ?: JSONObject.NULL)
         if (webSocket?.send(frame.toString()) != true) {
             onError?.invoke("远程连接暂不可用，正在等待重连。")
         }
