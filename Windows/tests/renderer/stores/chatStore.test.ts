@@ -39,8 +39,11 @@ describe("chat store with fake backend", () => {
     const messages = useChatStore.getState().messages;
     expect(messages.map((message) => message.kind)).toContain("user");
     expect(messages.map((message) => message.kind)).toContain("reasoning");
-    expect(messages.map((message) => message.kind)).toContain("toolCall");
-    expect(messages.map((message) => message.kind)).toContain("toolResult");
+    // A streaming toolCall finalizes in place when its toolResult arrives (same requestID),
+    // so the transcript has exactly one row for the invocation — no duplicate cards.
+    const toolMessages = messages.filter((message) => message.kind === "toolCall" || message.kind === "toolResult");
+    expect(toolMessages).toHaveLength(1);
+    expect(toolMessages[0]?.text).toContain("fake backend ready");
     expect(messages.map((message) => message.kind)).toContain("assistant");
     expect(messages.find((message) => message.kind === "assistant")?.text).toContain("Fake claude stream");
     expect(useChatStore.getState().tokensUsed).toBeGreaterThan(0);

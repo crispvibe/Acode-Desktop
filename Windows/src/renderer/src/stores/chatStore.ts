@@ -188,8 +188,28 @@ function isVisibleModelOutput(kind: ChatMessageKind): boolean {
   return !["system", "result", "rawOutput"].includes(kind);
 }
 
-function shouldMirrorStreamingTextIntoMessage(kind: ChatMessageKind): boolean {
-  return kind === "assistant" || kind === "reasoning" || kind === "commandOutput" || kind === "toolResult" || kind === "diff";
+function shouldMirrorStreamingTextIntoMessage(_kind: ChatMessageKind): boolean {
+  // Parity with the Mac store: streamed delta text lands on the message itself for every
+  // kind — dropping toolCall deltas (the old allow-list) meant streamed tool input JSON
+  // never reached the card.
+  return true;
+}
+
+/// Kinds that can upgrade into each other between the streaming start and the completed
+/// appendMessage for the same requestID (e.g. a commandInvocation streaming kind
+/// finalizing as commandOutput, or a toolCall completing as toolResult).
+function areCompatibleStreamingKinds(streamingKind: ChatMessageKind, completedKind: ChatMessageKind): boolean {
+  if (streamingKind === completedKind) {
+    return true;
+  }
+  return (
+    (streamingKind === "commandOutput" && completedKind === "command") ||
+    (streamingKind === "command" && completedKind === "commandOutput") ||
+    (streamingKind === "toolResult" && completedKind === "toolCall") ||
+    (streamingKind === "toolCall" && completedKind === "toolResult") ||
+    (streamingKind === "toolCall" && completedKind === "diff") ||
+    (streamingKind === "diff" && completedKind === "toolCall")
+  );
 }
 
 function defaultRuntime(): ChatStoreRuntime {
@@ -445,6 +465,55 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
         ...withDerivedState(nextState)
       };
     });
+  }
+
+  /// A completed appendMessage carrying the same requestID as a live streaming message
+  /// finalizes that row in place (kind may upgrade command↔commandOutput, toolCall↔toolResult,
+  /// toolCall↔diff) instead of appending a duplicate. Returns true when it consumed the event.
+  function finishActiveStreamingMessage(event: Extract<ChatBackendEvent, { type: "appendMessage" }>): boolean {
+    const state = get();
+    const requestID = event.requestID?.trim() || null;
+    const exactKey = streamingKey(event.kind, requestID);
+    let key = state.runtime.activeStreamingMessageIDs[exactKey] ? exactKey : null;
+    if (!key) {
+      key =
+        Object.keys(state.runtime.activeStreamingMessageIDs).find((candidate) => {
+          const [kindPart, ...rest] = candidate.split(":");
+          return rest.join(":") === (requestID ?? "") && areCompatibleStreamingKinds(kindPart as ChatMessageKind, event.kind);
+        }) ?? null;
+    }
+    if (!key) {
+      return false;
+    }
+    const messageID = state.runtime.activeStreamingMessageIDs[key];
+    const index = state.messages.findIndex((message) => message.id === messageID);
+    if (index < 0) {
+      return false;
+    }
+    const messages = state.messages.slice();
+    const existing = messages[index];
+    const completedText = event.text.trim();
+    messages[index] = {
+      ...existing,
+      kind: event.kind,
+      text: completedText && (!existing.text.trim() || existing.kind !== event.kind || event.kind === "diff") ? event.text : existing.text,
+      status: event.status ?? "done",
+      isStreaming: false
+    };
+    const activeStreamingMessageIDs = { ...state.runtime.activeStreamingMessageIDs };
+    delete activeStreamingMessageIDs[key];
+    bump({
+      messages,
+      isAwaitingFirstModelOutput: false,
+      status: isVisibleModelOutput(event.kind) ? "streaming" : state.status,
+      statusText: event.status ?? state.statusText,
+      runtime: {
+        ...state.runtime,
+        activeStreamingMessageIDs,
+        activeAssistantMessageID: state.runtime.activeAssistantMessageID === messageID ? null : state.runtime.activeAssistantMessageID
+      }
+    });
+    return true;
   }
 
   function appendError(message: string): void {
@@ -783,6 +852,12 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
       switch (event.type) {
         case "appendMessage": {
           const isStreaming = event.status === "streaming" || event.status === "running";
+          // A non-streaming appendMessage that matches a live streaming key finalizes
+          // that message in place (Mac's finishActiveStreamingMessageIfPossible) —
+          // otherwise item/started + item/completed pairs render as duplicate cards.
+          if (!isStreaming && finishActiveStreamingMessage(event)) {
+            break;
+          }
           const message: ChatMessage = {
             id: createID("message"),
             sessionID: state.currentSession?.id ?? null,

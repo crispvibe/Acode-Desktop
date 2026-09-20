@@ -89,16 +89,496 @@ type MessageTextBlock =
   | { kind: "text"; text: string }
   | { kind: "code"; language: string; text: string };
 
-const hiddenTranscriptKinds = new Set<ChatMessage["kind"]>(["system", "result", "rawOutput"]);
+const hiddenTranscriptKinds = new Set<ChatMessage["kind"]>(["result", "rawOutput"]);
 
-const foldableToolNames = new Set(["read", "grep", "glob"]);
+const batchableToolNames = new Set(["read", "grep", "glob"]);
 
+/// Normalized tool identity from a message's title/subtitle — parity with the Mac
+/// `ChatMessage.toolName` extension so Claude (title="Edit", subtitle="Claude Code")
+/// and Codex (title=method/item type, subtitle="Codex") items resolve the same way.
 function toolName(message: ChatMessage): string {
-  return (message.title || message.subtitle || kindLabel(message.kind)).trim();
+  const header = `${message.title ?? ""} ${message.subtitle ?? ""}`.toLowerCase();
+  const compact = header.replace(/[_\-\s]/g, "");
+  if (compact.includes("multiedit")) return "multiedit";
+  if (compact.includes("todowrite")) return "todowrite";
+  if (compact.includes("read")) return "read";
+  if (compact.includes("grep")) return "grep";
+  if (compact.includes("glob")) return "glob";
+  if (compact.includes("bash") || compact.includes("commandexecution") || compact.includes("shellexecution")) return "bash";
+  if (compact.includes("agent")) return "agent";
+  if (compact.includes("write")) return "write";
+  if (compact.includes("edit")) return "edit";
+  if (compact.includes("diff") || compact.includes("patch") || compact.includes("filechange")) return "diff";
+  if (message.kind === "diff") return "diff";
+  if (message.kind === "command" || message.kind === "commandOutput") return "bash";
+  return "";
 }
 
-function isFoldableReadTool(message: ChatMessage): boolean {
-  return message.kind === "toolCall" && foldableToolNames.has(toolName(message).toLowerCase());
+function toolDisplayLabel(message: ChatMessage): string {
+  const name = toolName(message);
+  if (name) {
+    return name;
+  }
+  const raw = (message.title || message.subtitle || "").trim();
+  return raw || kindLabel(message.kind);
+}
+
+// --- Tool payload parsers (port of the Mac AdvancedToolCard extractors) ----------
+
+type JSONObject = Record<string, unknown>;
+
+const nestedPayloadKeys = ["input", "args", "arguments", "params", "data", "item", "message", "content"];
+
+function asJSONObject(value: unknown): JSONObject | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as JSONObject) : null;
+}
+
+function jsonObject(text: string): unknown | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/// Split text into top-level {}/[] JSON fragments (balanced-brace scan, string aware).
+function jsonFragments(text: string): string[] {
+  const fragments: string[] = [];
+  const stack: string[] = [];
+  let start = -1;
+  let insideString = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (insideString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        insideString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      insideString = true;
+    } else if (char === "{" || char === "[") {
+      if (stack.length === 0) {
+        start = index;
+      }
+      stack.push(char);
+    } else if (char === "}" || char === "]") {
+      const last = stack[stack.length - 1];
+      if (!(last === "{" && char === "}") && !(last === "[" && char === "]")) {
+        stack.length = 0;
+        start = -1;
+        continue;
+      }
+      stack.pop();
+      if (stack.length === 0 && start >= 0) {
+        fragments.push(text.slice(start, index + 1));
+        start = -1;
+      }
+    }
+  }
+  return fragments;
+}
+
+function firstJSONObject(text: string): unknown | null {
+  const direct = jsonObject(text);
+  if (direct !== null) {
+    return direct;
+  }
+  for (const fragment of jsonFragments(text)) {
+    const object = jsonObject(fragment);
+    if (object !== null) {
+      return object;
+    }
+  }
+  return null;
+}
+
+function caseInsensitiveValue(key: string, object: JSONObject): unknown {
+  const lower = key.toLowerCase();
+  for (const [entryKey, value] of Object.entries(object)) {
+    if (entryKey.toLowerCase() === lower) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function firstStringValue(keys: string[], value: unknown): string | null {
+  const dict = asJSONObject(value);
+  if (dict) {
+    for (const key of keys) {
+      const entry = caseInsensitiveValue(key, dict);
+      if (typeof entry === "string" && entry.trim()) {
+        return entry.trim();
+      }
+      if (typeof entry === "number") {
+        return String(entry);
+      }
+    }
+    for (const key of nestedPayloadKeys) {
+      const entry = caseInsensitiveValue(key, dict);
+      const nested = entry === undefined ? null : firstStringValue(keys, entry);
+      if (nested !== null) {
+        return nested;
+      }
+    }
+    for (const entry of Object.values(dict)) {
+      const nested = firstStringValue(keys, entry);
+      if (nested !== null) {
+        return nested;
+      }
+    }
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const nested = firstStringValue(keys, entry);
+      if (nested !== null) {
+        return nested;
+      }
+    }
+  }
+  if (typeof value === "string") {
+    const nested = jsonObject(value);
+    if (nested !== null) {
+      return firstStringValue(keys, nested);
+    }
+  }
+  return null;
+}
+
+function firstToolStringValue(keys: string[], text: string): string | null {
+  const object = firstJSONObject(text);
+  return object === null ? null : firstStringValue(keys, object);
+}
+
+/// First filesystem-ish path in free text — supports Unix (/a/b), relative (a/b/c.ext)
+/// and Windows (C:\\a\\b) separators so host paths render on every platform.
+function firstPathInText(text: string): string | null {
+  const pattern = /(?:^|[\s`'"(]|^)(\/[^\s`"'<>|]+|[A-Za-z]:[\\/][^\s`"'<>|]+|[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+)/gu;
+  for (const match of text.matchAll(pattern)) {
+    const candidate = (match[1] ?? "").replace(/[.,;:。），]+$/u, "");
+    if (candidate.includes(".") || candidate.startsWith("/") || /^[A-Za-z]:/u.test(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+interface ReadToolPayload {
+  path: string | null;
+  startLine: number;
+  lines: string[];
+}
+
+interface SearchToolPayload {
+  mode: "grep" | "glob";
+  title: string;
+  rows: string[];
+}
+
+interface TerminalToolPayload {
+  command: string | null;
+  output: string;
+  exitCode: string | null;
+}
+
+interface AgentToolPayload {
+  title: string;
+  kind: string | null;
+  prompt: string | null;
+}
+
+interface TodoToolItem {
+  content: string;
+  status: string;
+}
+
+function searchRowsFrom(value: unknown): string[] {
+  const dict = asJSONObject(value);
+  if (dict) {
+    for (const key of ["matches", "files", "results", "output", "result"]) {
+      const entry = caseInsensitiveValue(key, dict);
+      if (entry === undefined) {
+        continue;
+      }
+      const rows = searchRowsFrom(entry);
+      if (rows.length > 0) {
+        return rows;
+      }
+    }
+    for (const entry of Object.values(dict)) {
+      const rows = searchRowsFrom(entry);
+      if (rows.length > 0) {
+        return rows;
+      }
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(searchRowsFrom);
+  }
+  if (typeof value === "string") {
+    const nested = jsonObject(value);
+    if (nested !== null) {
+      const rows = searchRowsFrom(nested);
+      if (rows.length > 0) {
+        return rows;
+      }
+    }
+    return value.split("\n").filter((line) => line.trim() !== "");
+  }
+  if (typeof value === "number") {
+    return [String(value)];
+  }
+  return [];
+}
+
+function readToolPayload(message: ChatMessage, resultText?: string): ReadToolPayload | null {
+  if (toolName(message) !== "read") {
+    return null;
+  }
+  const source = resultText?.trim() ? `${message.text}\n${resultText}` : message.text;
+  const path =
+    firstToolStringValue(["file_path", "filePath", "path", "target_file", "targetFile"], source) ?? firstPathInText(source);
+  const startLineRaw = firstToolStringValue(["start_line", "startLine", "line", "offset"], source);
+  const startLine = Math.max(1, Number.parseInt(startLineRaw?.trim() ?? "", 10) || 1);
+  const content =
+    firstToolStringValue(["content", "text", "output", "result"], source) ??
+    (resultText?.trim() && !jsonObject(resultText) ? resultText : "") ??
+    (jsonObject(message.text) ? "" : message.text);
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  if (lines.length === 0 && !path) {
+    return null;
+  }
+  return { path, startLine, lines: lines.length > 0 ? lines : [""] };
+}
+
+function searchToolPayload(message: ChatMessage, resultText?: string): SearchToolPayload | null {
+  const name = toolName(message);
+  if (name !== "grep" && name !== "glob") {
+    return null;
+  }
+  const source = resultText?.trim() ? `${message.text}\n${resultText}` : message.text;
+  const pattern = firstToolStringValue(["pattern", "query", "regex", "glob"], source);
+  const object = firstJSONObject(source);
+  let rows = object !== null ? searchRowsFrom(object) : [];
+  if (rows.length === 0) {
+    rows = source
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("{") && !line.endsWith("}"));
+    if (rows.length === 0 && jsonObject(source)) {
+      rows = [];
+    }
+  }
+  const title = pattern ? `pattern: ${pattern}` : name === "glob" ? "文件列表" : "匹配结果";
+  return { mode: name === "glob" ? "glob" : "grep", title, rows };
+}
+
+function cleanedTerminalOutput(value: string | null): string {
+  if (!value) {
+    return "";
+  }
+  const lines = value.replace(/\r\n/g, "\n").split("\n").filter((line) => !line.trim().startsWith("["));
+  return lines.join("\n").trim();
+}
+
+function terminalToolPayload(message: ChatMessage, resultText?: string): TerminalToolPayload | null {
+  const name = toolName(message);
+  if (name !== "bash" && message.kind !== "command" && message.kind !== "commandOutput") {
+    return null;
+  }
+  const command = firstToolStringValue(["command", "cmd", "shell_command", "shellCommand"], message.text);
+  const output =
+    cleanedTerminalOutput(firstToolStringValue(["stdout", "stderr", "output", "result", "error"], resultText?.trim() ? `${message.text}\n${resultText}` : message.text)) ||
+    cleanedTerminalOutput(resultText ?? null) ||
+    (message.kind === "commandOutput" ? cleanedTerminalOutput(message.text) : "");
+  const exitCode = firstToolStringValue(["exit_code", "exitCode", "code", "status_code", "statusCode"], resultText?.trim() ? `${message.text}\n${resultText}` : message.text);
+  return { command, output, exitCode };
+}
+
+function agentToolPayload(message: ChatMessage): AgentToolPayload | null {
+  if (toolName(message) !== "agent" && !`${message.title ?? ""} ${message.subtitle ?? ""}`.toLowerCase().includes("agent")) {
+    return null;
+  }
+  const kind = firstToolStringValue(["subagent_type", "subagentType", "agentType", "agent_type"], message.text);
+  const description = firstToolStringValue(["description", "summary", "title"], message.text);
+  const promptRaw = firstToolStringValue(["prompt", "instruction", "instructions"], message.text);
+  return { title: description ?? "Agent task", kind, prompt: promptRaw ? promptRaw.slice(0, 420) : null };
+}
+
+function todoTaskRows(text: string): TodoToolItem[] {
+  const fromObject = (value: unknown): TodoToolItem[] => {
+    const dict = asJSONObject(value);
+    if (dict) {
+      const todos = caseInsensitiveValue("todos", dict);
+      if (Array.isArray(todos)) {
+        const rows = todos.map(todoTaskRow).filter((row): row is TodoToolItem => row !== null);
+        if (rows.length > 0) {
+          return rows;
+        }
+      }
+      for (const key of nestedPayloadKeys) {
+        const entry = caseInsensitiveValue(key, dict);
+        if (entry === undefined) {
+          continue;
+        }
+        const rows = fromObject(entry);
+        if (rows.length > 0) {
+          return rows;
+        }
+      }
+      for (const entry of Object.values(dict)) {
+        const rows = fromObject(entry);
+        if (rows.length > 0) {
+          return rows;
+        }
+      }
+    }
+    if (Array.isArray(value)) {
+      const rows = value.map(todoTaskRow).filter((row): row is TodoToolItem => row !== null);
+      if (rows.length > 0) {
+        return rows;
+      }
+      for (const entry of value) {
+        const rows = fromObject(entry);
+        if (rows.length > 0) {
+          return rows;
+        }
+      }
+    }
+    if (typeof value === "string") {
+      const nested = jsonObject(value);
+      if (nested !== null) {
+        return fromObject(nested);
+      }
+    }
+    return [];
+  };
+
+  const direct = jsonObject(text);
+  if (direct !== null) {
+    const rows = fromObject(direct);
+    if (rows.length > 0) {
+      return rows;
+    }
+  }
+  for (const fragment of jsonFragments(text)) {
+    const object = jsonObject(fragment);
+    if (object === null) {
+      continue;
+    }
+    const rows = fromObject(object);
+    if (rows.length > 0) {
+      return rows;
+    }
+  }
+  // Plain-text fallback: pull every `"content": "..."` literal.
+  const rows: TodoToolItem[] = [];
+  for (const match of text.matchAll(/"content"\s*:\s*"((?:\\.|[^"\\])*)"/g)) {
+    try {
+      const content = String(JSON.parse(`"${match[1]}"`)).trim();
+      if (content) {
+        rows.push({ content, status: "" });
+      }
+    } catch {
+      // ignore malformed escapes
+    }
+  }
+  return rows;
+}
+
+function todoTaskRow(value: unknown): TodoToolItem | null {
+  const dict = asJSONObject(value);
+  if (!dict) {
+    return null;
+  }
+  const content = ["content", "title", "task", "demand"]
+    .map((key) => caseInsensitiveValue(key, dict))
+    .find((entry): entry is string => typeof entry === "string" && entry.trim() !== "");
+  if (!content) {
+    return null;
+  }
+  const status = caseInsensitiveValue("status", dict);
+  return { content, status: typeof status === "string" ? status : "" };
+}
+
+function todoToolPayload(message: ChatMessage): TodoToolItem[] | null {
+  const header = `${message.title ?? ""} ${message.subtitle ?? ""}`.toLowerCase().replace(/[_\-\s]/g, "");
+  const isTodo = header.includes("todowrite") || message.text.toLowerCase().includes('"todos"');
+  return isTodo ? todoTaskRows(message.text) : null;
+}
+
+/// Hide protocol noise the way the Mac transcript does — result/success envelopes, raw
+/// protocol blobs, and operational chatter never reach the conversation.
+function shouldHideMessage(message: ChatMessage): boolean {
+  const title = (message.title ?? "").trim().toLowerCase();
+  const subtitle = (message.subtitle ?? "").trim().toLowerCase();
+  const text = message.text.trim();
+  if (message.kind === "result") {
+    return true;
+  }
+  if (message.kind === "rawOutput") {
+    if (!text) {
+      return true;
+    }
+    if (isProtocolBlob(text)) {
+      return true;
+    }
+    if (title === "raw" && subtitle === "claude code" && isClaudeProtocolRawLine(text)) {
+      return true;
+    }
+  }
+  if (message.kind === "rawOutput" || message.kind === "toolCall" || message.kind === "toolResult" || message.kind === "diff") {
+    const noisePrefixes = ["mcpserver/", "account/ratelimits", "thread/status", "thread/tokenusage", "remotecontrol/", "session/configured", "session/connected"];
+    if (noisePrefixes.some((prefix) => title.startsWith(prefix))) {
+      return true;
+    }
+    if ((title.endsWith("/updated") || title.endsWith("/changed")) && title.includes("/")) {
+      return true;
+    }
+    const compactTitle = title.replace(/[_\-\s]/g, "");
+    if (compactTitle === "userinput" || compactTitle === "stderr" || compactTitle.includes("usermessage") || compactTitle.includes("reasoning")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isProtocolBlob(text: string): boolean {
+  if (!text.startsWith("{") || !text.endsWith("}")) {
+    return false;
+  }
+  const lower = text.toLowerCase();
+  return lower.includes('"session_id"') || lower.includes('"uuid"') || lower.includes('"type":"system"') || lower.includes('"type": "system"') || lower.includes('"status":"requesting"') || lower.includes('"status": "requesting"');
+}
+
+function isClaudeProtocolRawLine(text: string): boolean {
+  const compact = text.replace(/\s+/g, "");
+  if (!compact.startsWith("{")) {
+    return false;
+  }
+  return [
+    '"type":"stream_event"',
+    '"type":"message_start"',
+    '"type":"message_delta"',
+    '"type":"message_stop"',
+    '"type":"content_block_start"',
+    '"type":"content_block_delta"',
+    '"type":"content_block_stop"',
+    '"type":"input_json_delta"',
+    '"type":"signature_delta"',
+    '"type":"ping"'
+  ].some((marker) => compact.includes(marker));
 }
 
 const toolPathKeys = ["file_path", "filePath", "filepath", "path", "filename", "notebook_path"];
@@ -142,10 +622,10 @@ function toolHeaderSummary(message: ChatMessage): string | null {
   return firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine;
 }
 
-const fileChangeToolNames = new Set(["edit", "write", "multiedit", "create", "create_file", "new_file", "notebookedit"]);
+const fileChangeToolNames = new Set(["edit", "write", "multiedit", "multi_edit", "create", "create_file", "new_file", "notebookedit"]);
 
 function isFileChangeMessage(message: ChatMessage): boolean {
-  return message.kind === "diff" || (message.kind === "toolCall" && fileChangeToolNames.has(toolName(message).toLowerCase()));
+  return message.kind === "diff" || fileChangeToolNames.has(toolName(message).toLowerCase());
 }
 
 type DiffLine = { marker: "+" | "-" | " "; text: string };
@@ -209,41 +689,142 @@ function buildDiffLines(message: ChatMessage): DiffLine[] {
   return capDiffLines(raw.map<DiffLine>((line) => ({ marker: " ", text: line })));
 }
 
+interface ToolInvocation {
+  primary: ChatMessage;
+  responses: ChatMessage[];
+}
+
 type RenderItem =
   | { type: "message"; message: ChatMessage }
-  | { type: "toolBatch"; id: string; messages: ChatMessage[] };
+  | { type: "toolInvocation"; id: string; invocation: ToolInvocation }
+  | { type: "toolBatch"; id: string; invocations: ToolInvocation[] };
 
-// Mirrors the Mac transcript: collapse runs of consecutive Read/Grep/Glob tool calls (and the
-// tool results interleaved with them) into a single foldable batch so the transcript stays clean.
-function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
-  const items: RenderItem[] = [];
-  let run: ChatMessage[] = [];
+function isToolInvocationStart(message: ChatMessage): boolean {
+  return message.kind === "toolCall" || message.kind === "command";
+}
 
-  const flush = () => {
-    if (run.length === 0) {
-      return;
+function isToolInvocationBoundary(message: ChatMessage): boolean {
+  switch (message.kind) {
+    case "toolResult":
+    case "commandOutput":
+    case "diff":
+    case "system":
+      return false;
+    default:
+      return true;
+  }
+}
+
+/// requestID or an embedded call/item id used to pair a tool call with its result —
+/// mirrors Mac `toolCorrelationID`.
+function toolCorrelationID(message: ChatMessage): string | null {
+  const requestID = message.requestID?.trim();
+  if (requestID) {
+    return requestID;
+  }
+  if (message.kind === "toolResult") {
+    const resultID = firstToolStringValue(["tool_use_id", "toolUseId"], message.text);
+    if (resultID) {
+      return resultID;
     }
-    const foldableCount = run.filter(isFoldableReadTool).length;
-    if (foldableCount >= 2) {
-      items.push({ type: "toolBatch", id: `tool-batch-${run[0].id}`, messages: run });
+  }
+  return firstToolStringValue(["call_id", "callId", "item_id", "itemId", "command_id", "commandId", "id"], message.text);
+}
+
+function isToolInvocationFeedback(primary: ChatMessage, candidate: ChatMessage): boolean {
+  const pairOk =
+    (primary.kind === "command" && candidate.kind === "commandOutput") ||
+    (primary.kind === "toolCall" && (candidate.kind === "toolResult" || candidate.kind === "diff"));
+  if (!pairOk) {
+    return false;
+  }
+  const primaryID = toolCorrelationID(primary);
+  const candidateID = toolCorrelationID(candidate);
+  if (primaryID && candidateID) {
+    return primaryID === candidateID;
+  }
+  return !primary.requestID && !candidate.requestID;
+}
+
+/// Mirrors the Mac transcript builder: a tool call groups with its matching results
+/// (toolInvocationGroup), and runs of ≥2 consecutive read/grep/glob invocations collapse
+/// into one batch card (coalesceToolBatches).
+function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
+  const items: Array<ToolInvocation | ChatMessage> = [];
+  const seenErrorTexts = new Set<string>();
+  const consumedIDs = new Set<string>();
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (consumedIDs.has(message.id) || shouldHideMessage(message)) {
+      continue;
+    }
+    if (message.kind === "error") {
+      const key = message.text.trim();
+      if (seenErrorTexts.has(key)) {
+        continue;
+      }
+      seenErrorTexts.add(key);
+    }
+    if (!isToolInvocationStart(message)) {
+      items.push(message);
+      continue;
+    }
+    const responses: ChatMessage[] = [];
+    let scan = index + 1;
+    while (scan < messages.length) {
+      const candidate = messages[scan];
+      if (consumedIDs.has(candidate.id) || shouldHideMessage(candidate)) {
+        scan += 1;
+        continue;
+      }
+      if (isToolInvocationFeedback(message, candidate)) {
+        responses.push(candidate);
+        consumedIDs.add(candidate.id);
+        scan += 1;
+        continue;
+      }
+      if (isToolInvocationBoundary(candidate) || toolCorrelationID(message) === null || responses.length > 0) {
+        break;
+      }
+      scan += 1;
+    }
+    if (responses.length === 0) {
+      items.push(message);
+      continue;
+    }
+    items.push({ primary: message, responses });
+  }
+
+  const result: RenderItem[] = [];
+  let run: ToolInvocation[] = [];
+  const flush = () => {
+    if (run.length >= 2) {
+      result.push({ type: "toolBatch", id: `tool-batch-${run[0].primary.id}`, invocations: run });
     } else {
-      for (const message of run) {
-        items.push({ type: "message", message });
+      for (const invocation of run) {
+        result.push({ type: "toolInvocation", id: invocation.primary.id, invocation });
       }
     }
     run = [];
   };
-
-  for (const message of messages) {
-    if (isFoldableReadTool(message) || (message.kind === "toolResult" && run.length > 0)) {
-      run.push(message);
+  for (const item of items) {
+    if (isToolInvocation(item) && batchableToolNames.has(toolName(item.primary).toLowerCase())) {
+      run.push(item);
     } else {
       flush();
-      items.push({ type: "message", message });
+      if (isToolInvocation(item)) {
+        result.push({ type: "toolInvocation", id: item.primary.id, invocation: item });
+      } else {
+        result.push({ type: "message", message: item });
+      }
     }
   }
   flush();
-  return items;
+  return result;
+}
+
+function isToolInvocation(value: ChatMessage | ToolInvocation): value is ToolInvocation {
+  return typeof value === "object" && value !== null && "primary" in value && "responses" in value;
 }
 
 function parseMessageText(text: string): MessageTextBlock[] {
@@ -555,7 +1136,9 @@ export function ChatRuntimePanel() {
         ) : (
           renderItems.map((item) =>
             item.type === "toolBatch" ? (
-              <ToolBatchCard key={item.id} messages={item.messages} onOpenFile={openFile} />
+              <ToolBatchCard key={item.id} invocations={item.invocations} onOpenFile={openFile} />
+            ) : item.type === "toolInvocation" ? (
+              <ToolInvocationCard key={item.id} invocation={item.invocation} onOpenFile={openFile} />
             ) : (
               <ChatMessageRow
                 key={item.message.id}
@@ -868,15 +1451,17 @@ const ChatMessageRow = memo(function ChatMessageRow({
     return <AssistantMessageCard message={message} />;
   }
 
+  if (message.kind === "system") {
+    return <SystemEventCard message={message} />;
+  }
+
   if (hiddenTranscriptKinds.has(message.kind)) {
     return <DiagnosticEventCard message={message} />;
   }
 
-  if (isFileChangeMessage(message)) {
-    return <FileChangeCard message={message} onOpenFile={onOpenFile} />;
-  }
-
-  return <ToolCard message={message} onOpenFile={onOpenFile} />;
+  // Every remaining operational kind (toolCall/toolResult/command/commandOutput/diff/error)
+  // routes through the same specialized-card dispatch as grouped invocations.
+  return <ToolInvocationCard invocation={{ primary: message, responses: [] }} onOpenFile={onOpenFile} />;
 });
 
 function AssistantMessageCard({ message }: { message: ChatMessage }) {
@@ -971,54 +1556,85 @@ function FileChangeCard({
   );
 }
 
-function ToolCard({
-  message,
-  defaultExpanded = false,
+/// A tool call plus its matching results rendered as one card — routes to the
+/// specialized renderer for the tool (Mac's AdvancedToolCard parity).
+function ToolInvocationCard({
+  invocation,
   onOpenFile
 }: {
-  message: ChatMessage;
-  defaultExpanded?: boolean;
+  invocation: ToolInvocation;
   onOpenFile: (path: string) => void | Promise<void>;
 }) {
-  // File-change tools and failures stay expanded by default; read-ish noise folds to one line.
-  const isError = message.kind === "error" || message.status === "failed";
-  const isFileChange =
-    message.kind === "diff" || ["edit", "write", "multiedit", "create", "create_file"].includes(toolName(message).toLowerCase());
-  const [expanded, setExpanded] = useState(defaultExpanded || isError || isFileChange);
-  const filePath = extractToolFilePath(message.text);
-  const summary = toolHeaderSummary(message);
-  const className = ["chat-event-row", "transcript-event-card", `kind-${message.kind}`, isError ? "error" : ""]
-    .filter(Boolean)
-    .join(" ");
+  const { primary, responses } = invocation;
+  const resultText = responses.map((response) => response.text).filter((text) => text.trim()).join("\n");
+  const diffResponse = responses.find((response) => response.kind === "diff");
 
+  if (isFileChangeMessage(primary) || diffResponse) {
+    const source = diffResponse ?? primary;
+    const merged = { ...source, text: diffResponse?.text.trim() ? diffResponse.text : source.text };
+    return <FileChangeCard message={merged} onOpenFile={onOpenFile} />;
+  }
+  const read = readToolPayload(primary, resultText || undefined);
+  if (read) {
+    return <ReadToolCard payload={read} onOpenFile={onOpenFile} />;
+  }
+  const search = searchToolPayload(primary, resultText || undefined);
+  if (search) {
+    return <SearchToolCard payload={search} />;
+  }
+  const agent = agentToolPayload(primary);
+  if (agent) {
+    return <AgentToolCard payload={agent} resultText={resultText} />;
+  }
+  const todos = todoToolPayload(primary);
+  if (todos) {
+    return <TodoToolCard rows={todos} />;
+  }
+  const terminal = terminalToolPayload(primary, resultText || undefined);
+  if (terminal) {
+    return <TerminalToolCard payload={terminal} status={primary.status} isStreaming={Boolean(primary.isStreaming)} />;
+  }
   return (
-    <div className={className}>
-      <button type="button" className="event-card-header tool-card-header" onClick={() => setExpanded((value) => !value)}>
-        {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        <span className="tool-card-name">{toolName(message)}</span>
-        {summary ? (
-          filePath ? (
-            <span
-              className="tool-card-summary tool-card-file"
-              role="link"
-              tabIndex={0}
-              title={filePath}
-              onClick={(event) => {
+    <div className="chat-event-row transcript-event-card tool-invocation-card">
+      <GenericToolRow message={primary} onOpenFile={onOpenFile} />
+      {responses.map((response) => (
+        <GenericToolRow key={response.id} message={response} onOpenFile={onOpenFile} />
+      ))}
+    </div>
+  );
+}
+
+function GenericToolRow({ message, onOpenFile }: { message: ChatMessage; onOpenFile: (path: string) => void | Promise<void> }) {
+  const [expanded, setExpanded] = useState(message.kind === "error" || message.status === "failed");
+  const isError = message.kind === "error" || message.status === "failed";
+  const filePath = extractToolFilePath(message.text);
+  const summary = toolJSONSummary(message.text) ?? toolHeaderSummary(message);
+  return (
+    <div className={`generic-tool-row ${isError ? "error" : ""}`}>
+      <button type="button" className="generic-tool-header" onClick={() => setExpanded((value) => !value)}>
+        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <span className="tool-card-name">{toolDisplayLabel(message)}</span>
+        {filePath ? (
+          <span
+            className="tool-card-summary tool-card-file"
+            role="link"
+            tabIndex={0}
+            title={filePath}
+            onClick={(event) => {
+              event.stopPropagation();
+              void onOpenFile(filePath);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
                 event.stopPropagation();
                 void onOpenFile(filePath);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.stopPropagation();
-                  void onOpenFile(filePath);
-                }
-              }}
-            >
-              {summary}
-            </span>
-          ) : (
-            <span className="tool-card-summary">{summary}</span>
-          )
+              }
+            }}
+          >
+            {summary}
+          </span>
+        ) : summary ? (
+          <span className="tool-card-summary">{summary}</span>
         ) : null}
         {message.status ? <small>{message.status}</small> : null}
       </button>
@@ -1032,24 +1648,144 @@ function ToolCard({
   );
 }
 
+function toolJSONSummary(text: string): string | null {
+  const object = firstJSONObject(text);
+  if (object === null) {
+    return null;
+  }
+  const value = firstStringValue(
+    ["command", "cmd", "file_path", "filePath", "path", "target_file", "targetFile", "pattern", "query", "description", "summary", "title", "status", "message"],
+    object
+  ) ?? firstStringValue(["stdout", "stderr", "output", "result", "text", "content"], object);
+  if (!value) {
+    return null;
+  }
+  const compact = value.replace(/\n/g, " ").trim();
+  return compact.length > 180 ? `${compact.slice(0, 179)}…` : compact;
+}
+
+function ReadToolCard({ payload, onOpenFile }: { payload: ReadToolPayload; onOpenFile: (path: string) => void | Promise<void> }) {
+  const fileName = payload.path ? basename(payload.path) : "文件";
+  const previewLines = payload.lines.slice(0, 80);
+  return (
+    <div className="chat-event-row transcript-event-card read-tool-card">
+      <div className="event-card-header tool-card-header">
+        <FileText size={12} />
+        {payload.path ? (
+          <button type="button" className="tool-card-summary tool-card-file" title={payload.path} onClick={() => void onOpenFile(payload.path!)}>
+            {fileName}
+          </button>
+        ) : (
+          <span className="tool-card-name">{fileName}</span>
+        )}
+        <small>{payload.lines.length} lines</small>
+      </div>
+      <div className="read-tool-body">
+        {previewLines.map((line, index) => (
+          <div className="read-tool-line" key={index}>
+            <span className="read-tool-ln">{payload.startLine + index}</span>
+            <code>{line || " "}</code>
+          </div>
+        ))}
+        {payload.lines.length > 80 ? <p className="read-tool-more">… 还有 {payload.lines.length - 80} 行</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function SearchToolCard({ payload }: { payload: SearchToolPayload }) {
+  const rows = payload.rows.slice(0, 80);
+  return (
+    <div className="chat-event-row transcript-event-card search-tool-card">
+      <div className="event-card-header tool-card-header">
+        {payload.mode === "glob" ? <FileText size={12} /> : <Bot size={12} />}
+        <span className="tool-card-name">{payload.title}</span>
+        <small>{payload.rows.length} 项</small>
+      </div>
+      <div className="search-tool-body">
+        {rows.length === 0 ? <p>{payload.mode === "glob" ? "无匹配文件" : "无匹配结果"}</p> : null}
+        {rows.map((row, index) => (
+          <div className="search-tool-line" key={index}>
+            <code>{row}</code>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TerminalToolCard({ payload, status, isStreaming }: { payload: TerminalToolPayload; status?: string; isStreaming: boolean }) {
+  const output = payload.output.split("\n").slice(0, 200).join("\n");
+  return (
+    <div className="chat-event-row transcript-event-card terminal-tool-card">
+      <div className="event-card-header tool-card-header">
+        <Terminal size={12} />
+        <span className="tool-card-name">{payload.command ?? "command"}</span>
+        <small>{payload.exitCode ? `exit ${payload.exitCode}` : (status ?? (isStreaming ? "running" : ""))}</small>
+      </div>
+      {payload.command ? <pre className="terminal-tool-command">$ {payload.command}</pre> : null}
+      {output ? (
+        <pre className="terminal-tool-output">{output}</pre>
+      ) : (
+        <p className="terminal-tool-empty">{isStreaming ? "命令执行中…" : "命令已执行"}</p>
+      )}
+    </div>
+  );
+}
+
+function AgentToolCard({ payload, resultText }: { payload: AgentToolPayload; resultText: string }) {
+  return (
+    <div className="chat-event-row transcript-event-card agent-tool-card">
+      <div className="event-card-header tool-card-header">
+        <Bot size={12} />
+        <span className="tool-card-name">{payload.title}</span>
+        {payload.kind ? <small>{payload.kind}</small> : null}
+      </div>
+      {payload.prompt ? <p className="agent-tool-prompt">{payload.prompt}</p> : null}
+      {resultText ? <pre className="agent-tool-result">{resultText.slice(0, 2000)}</pre> : null}
+    </div>
+  );
+}
+
+function TodoToolCard({ rows }: { rows: TodoToolItem[] }) {
+  return (
+    <div className="chat-event-row transcript-event-card todo-tool-card">
+      <div className="event-card-header tool-card-header">
+        <Check size={12} />
+        <span className="tool-card-name">任务清单</span>
+        <small>{rows.length} 项</small>
+      </div>
+      <div className="todo-tool-body">
+        {rows.map((row, index) => (
+          <div className={`todo-tool-line status-${row.status || "pending"}`} key={index}>
+            <span className="todo-tool-check">{row.status === "completed" ? "☑" : row.status === "in_progress" ? "◐" : "☐"}</span>
+            <span>{row.content}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/// Runs of ≥2 read/grep/glob invocations collapse into one batch card (Mac
+/// coalesceToolBatches parity) so file-scanning runs stay out of the way.
 function ToolBatchCard({
-  messages,
+  invocations,
   onOpenFile
 }: {
-  messages: ChatMessage[];
+  invocations: ToolInvocation[];
   onOpenFile: (path: string) => void | Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const readCount = messages.filter((message) => toolName(message).toLowerCase() === "read").length;
-  const grepCount = messages.filter((message) => toolName(message).toLowerCase() === "grep").length;
-  const globCount = messages.filter((message) => toolName(message).toLowerCase() === "glob").length;
-  const callCount = messages.filter(isFoldableReadTool).length;
+  const readCount = invocations.filter((invocation) => toolName(invocation.primary).toLowerCase() === "read").length;
+  const grepCount = invocations.filter((invocation) => toolName(invocation.primary).toLowerCase() === "grep").length;
+  const globCount = invocations.filter((invocation) => toolName(invocation.primary).toLowerCase() === "glob").length;
   const parts = [
     readCount > 0 ? `读取 ${readCount}` : null,
     grepCount > 0 ? `搜索 ${grepCount}` : null,
     globCount > 0 ? `匹配 ${globCount}` : null
   ].filter(Boolean);
-  const summary = `${parts.length > 0 ? parts.join(" · ") : "工具"} · 共 ${callCount} 步`;
+  const summary = `${parts.length > 0 ? parts.join(" · ") : "工具"} · 共 ${invocations.length} 步`;
 
   return (
     <div className="chat-event-row transcript-event-card tool-batch-card">
@@ -1059,8 +1795,8 @@ function ToolBatchCard({
       </button>
       {expanded ? (
         <div className="tool-batch-body">
-          {messages.map((message) => (
-            <ToolCard key={message.id} message={message} onOpenFile={onOpenFile} />
+          {invocations.map((invocation) => (
+            <ToolInvocationCard key={invocation.primary.id} invocation={invocation} onOpenFile={onOpenFile} />
           ))}
         </div>
       ) : null}
@@ -1076,6 +1812,16 @@ function DiagnosticEventCard({ message }: { message: ChatMessage }) {
         {message.status ? <small>{message.status}</small> : null}
       </div>
       <p>内部事件已隐藏，避免把原始协议内容直接显示在主对话中。</p>
+    </div>
+  );
+}
+
+/// System messages render as a slim centered line (Mac system bubble) instead of the
+/// generic "event hidden" card.
+function SystemEventCard({ message }: { message: ChatMessage }) {
+  return (
+    <div className="chat-event-row transcript-event-card system-event-card">
+      <span>{message.text || message.title || "system"}</span>
     </div>
   );
 }
