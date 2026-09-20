@@ -11,6 +11,8 @@ import java.net.URLEncoder
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 
+class RemoteApiException(message: String) : Exception(message)
+
 class RemoteLanClient(
     private val config: RemoteChatConfig,
     private val client: OkHttpClient = defaultClient,
@@ -37,7 +39,6 @@ class RemoteLanClient(
             .put("contentBase64", Base64.getEncoder().encodeToString(data))
         val request = Request.Builder()
             .url("${config.baseUrl}/attachments")
-            .header("Authorization", "Bearer ${config.token}")
             .post(payload.toString().toRequestBody(jsonMediaType))
             .build()
         client.newCall(request).execute().use { response ->
@@ -55,7 +56,6 @@ class RemoteLanClient(
         val encoded = URLEncoder.encode(path, "UTF-8")
         val request = Request.Builder()
             .url("${config.baseUrl}/projects/$projectId/files?path=$encoded")
-            .header("Authorization", "Bearer ${config.token}")
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw RemoteApiException("文件列表加载失败：${response.code}")

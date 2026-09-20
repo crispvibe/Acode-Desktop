@@ -14,24 +14,18 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.codevoke.android.ui.state.CodevokeViewModel
-import com.codevoke.android.ui.state.AuthGateState
 
 private enum class CodevokeScreen {
-    Login,
-    Register,
-    Chat,
     Devices,
+    Chat,
     Settings,
-    Account,
-    DeleteAccount,
-    Legal,
 }
 
 @Composable
 fun CodevokeApp() {
     val vm: CodevokeViewModel = viewModel()
     val lifecycleOwner = LocalLifecycleOwner.current
-    var screen by remember { mutableStateOf(CodevokeScreen.Login) }
+    var screen by remember { mutableStateOf(CodevokeScreen.Devices) }
     val backStack = remember { mutableStateListOf<CodevokeScreen>() }
 
     fun replaceScreen(next: CodevokeScreen) {
@@ -55,28 +49,16 @@ fun CodevokeApp() {
 
     fun handleBack() {
         when (screen) {
-            CodevokeScreen.Login -> Unit
-            CodevokeScreen.Register,
-            CodevokeScreen.Forgot -> navigateBack(CodevokeScreen.Login)
-            CodevokeScreen.Chat -> Unit
             CodevokeScreen.Devices,
-            CodevokeScreen.Settings -> navigateBack(CodevokeScreen.Chat)
-            CodevokeScreen.Account,
-            CodevokeScreen.Legal -> navigateBack(CodevokeScreen.Settings)
-            CodevokeScreen.ChangePassword,
-            CodevokeScreen.DeleteAccount -> navigateBack(CodevokeScreen.Account)
+            CodevokeScreen.Chat -> Unit
+            CodevokeScreen.Settings -> navigateBack(if (vm.chat.config.isComplete) CodevokeScreen.Chat else CodevokeScreen.Devices)
         }
     }
 
-    LaunchedEffect(vm.auth.gateState) {
-        if (vm.auth.gateState == AuthGateState.Authenticated && screen == CodevokeScreen.Login) {
-            replaceScreen(CodevokeScreen.Chat)
-        }
-    }
-
-    LaunchedEffect(screen, vm.auth.gateState) {
-        if (screen == CodevokeScreen.Devices && vm.auth.gateState == AuthGateState.Authenticated) {
-            vm.loadRemoteDevices()
+    LaunchedEffect(Unit) {
+        vm.scanLanDevices()
+        vm.savedLanTarget()?.let { (host, port) ->
+            vm.connectLanHost(host, port) { replaceScreen(CodevokeScreen.Chat) }
         }
     }
 
@@ -88,54 +70,28 @@ fun CodevokeApp() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    BackHandler(enabled = screen != CodevokeScreen.Login && screen != CodevokeScreen.Chat, onBack = ::handleBack)
+    BackHandler(enabled = screen == CodevokeScreen.Settings, onBack = ::handleBack)
 
     when (screen) {
-        CodevokeScreen.Login -> if (vm.auth.gateState == AuthGateState.Checking) AuthCheckingScreen() else LoginScreen(
-            email = vm.auth.email,
-            verificationCode = vm.auth.verificationCode,
-            agreed = vm.auth.agreed,
-            submitting = vm.auth.submitting,
-            message = vm.auth.message,
-            onEmailChange = vm::updateEmail,
-            onVerificationCodeChange = vm::updateVerificationCode,
-            toggleAgreement = vm::toggleAgreement,
-            openRegister = { navigateTo(CodevokeScreen.Register) },
-            requestCode = vm::requestLoginCode,
-            login = { vm.requestLogin { replaceScreen(CodevokeScreen.Chat) } },
-            codeSending = vm.auth.loginCodeSending,
-            codeCooldownSeconds = vm.auth.loginCodeCooldown,
-            openUserAgreement = {
-                vm.presentLegal("user_agreement")
-                navigateTo(CodevokeScreen.Legal)
+        CodevokeScreen.Devices -> DeviceListScreen(
+            hosts = vm.devices.hosts,
+            scanning = vm.devices.scanning,
+            connecting = vm.devices.connecting,
+            manualHost = vm.devices.manualHost,
+            manualPort = vm.devices.manualPort,
+            message = vm.devices.message,
+            connectedHost = vm.devices.connectedHost,
+            goBack = {
+                if (vm.chat.config.isComplete) navigateBack(CodevokeScreen.Chat)
             },
-            openPrivacyPolicy = {
-                vm.presentLegal("privacy_policy")
-                navigateTo(CodevokeScreen.Legal)
+            rescan = vm::scanLanDevices,
+            onManualHostChange = vm::updateManualHost,
+            onManualPortChange = vm::updateManualPort,
+            connectManual = { vm.connectManualHost { replaceScreen(CodevokeScreen.Chat) } },
+            connectHost = { host ->
+                vm.connectLanHost(host, vm.devices.manualPort.trim().toIntOrNull() ?: 18765) { replaceScreen(CodevokeScreen.Chat) }
             },
-        )
-        CodevokeScreen.Register -> RegisterScreen(
-            email = vm.auth.email,
-            verificationCode = vm.auth.verificationCode,
-            agreed = vm.auth.agreed,
-            submitting = vm.auth.submitting,
-            message = vm.auth.message,
-            onEmailChange = vm::updateEmail,
-            onVerificationCodeChange = vm::updateVerificationCode,
-            toggleAgreement = vm::toggleAgreement,
-            requestCode = vm::requestRegisterCode,
-            goBack = { navigateBack(CodevokeScreen.Login) },
-            register = { vm.requestRegister { replaceScreen(CodevokeScreen.Chat) } },
-            codeSending = vm.auth.registerCodeSending,
-            codeCooldownSeconds = vm.auth.registerCodeCooldown,
-            openUserAgreement = {
-                vm.presentLegal("user_agreement")
-                navigateTo(CodevokeScreen.Legal)
-            },
-            openPrivacyPolicy = {
-                vm.presentLegal("privacy_policy")
-                navigateTo(CodevokeScreen.Legal)
-            },
+            openChat = { replaceScreen(CodevokeScreen.Chat) },
         )
         CodevokeScreen.Chat -> ChatScreen(
             connectionStatus = vm.chat.connectionStatus,
@@ -188,59 +144,11 @@ fun CodevokeApp() {
             openFile = vm::openFile,
             openParentDirectory = vm::openParentDirectory,
         )
-        CodevokeScreen.Devices -> DeviceListScreen(
-            devices = vm.devices.devices,
-            loading = vm.devices.loading,
-            deviceCode = vm.devices.deviceCode,
-            resolving = vm.devices.resolvingCode,
-            connecting = vm.devices.connecting,
-            resolvedDevice = vm.devices.resolvedDevice,
-            message = vm.devices.message,
-            connectedDeviceId = vm.devices.connectedDeviceId,
-            connectedTransport = vm.devices.connectedTransport,
-            goBack = { navigateBack(CodevokeScreen.Chat) },
-            refresh = vm::loadRemoteDevices,
-            connect = { device -> vm.connectRemoteDevice(device) { replaceScreen(CodevokeScreen.Chat) } },
-            onCodeChange = vm::updateDeviceCode,
-            resolve = vm::resolveDeviceCode,
-            connectResolved = { vm.connectResolvedDevice { replaceScreen(CodevokeScreen.Chat) } },
-        )
         CodevokeScreen.Settings -> SettingsScreen(
-            account = vm.auth.account,
             connectionStatus = vm.chat.connectionStatus,
             selectedCLI = vm.chat.composer.cli,
-            goBack = { navigateBack(CodevokeScreen.Chat) },
-            openAccount = { navigateTo(CodevokeScreen.Account) },
+            goBack = { navigateBack(if (vm.chat.config.isComplete) CodevokeScreen.Chat else CodevokeScreen.Devices) },
             openDevices = { navigateTo(CodevokeScreen.Devices) },
-            openLegal = { navigateTo(CodevokeScreen.Legal) },
-        )
-        CodevokeScreen.Account -> AccountSecurityScreen(
-            account = vm.auth.account,
-            message = vm.auth.message,
-            goBack = { navigateBack(CodevokeScreen.Settings) },
-            openDeleteAccount = { navigateTo(CodevokeScreen.DeleteAccount) },
-            logout = {
-                vm.logout()
-                replaceScreen(CodevokeScreen.Login)
-            },
-        )
-        CodevokeScreen.DeleteAccount -> AccountDeletionScreen(
-            confirmAccount = vm.auth.deletionConfirmAccount,
-            confirmDestroy = vm.auth.deletionConfirmDestroy,
-            confirmWaiveRights = vm.auth.deletionConfirmWaiveRights,
-            reason = vm.auth.deletionReason,
-            submitting = vm.auth.submitting,
-            message = vm.auth.message,
-            onConfirmAccountChange = vm::updateDeletionConfirmAccount,
-            onConfirmDestroyChange = vm::updateDeletionConfirmDestroy,
-            onConfirmWaiveRightsChange = vm::updateDeletionConfirmWaiveRights,
-            onReasonChange = vm::updateDeletionReason,
-            submit = { vm.deleteAccount { replaceScreen(CodevokeScreen.Login) } },
-            goBack = { navigateBack(CodevokeScreen.Account) },
-        )
-        CodevokeScreen.Legal -> LegalScreen(
-            documents = vm.auth.legalDocuments,
-            goBack = { navigateBack(CodevokeScreen.Settings) },
         )
     }
 }

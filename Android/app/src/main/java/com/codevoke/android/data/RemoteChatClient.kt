@@ -68,7 +68,6 @@ class RemoteChatClient(
         onStatus?.invoke("连接中")
         val request = Request.Builder()
             .url(config.webSocketUrl)
-            .header("Authorization", "Bearer ${config.token}")
             .build()
         webSocket = activeClient.newWebSocket(request, Listener(focusedSessionId, lastRevision, generation))
     }

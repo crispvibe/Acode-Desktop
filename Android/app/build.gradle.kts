@@ -65,10 +65,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    implementation("androidx.security:security-crypto:1.1.0")
     compileOnly("com.google.errorprone:error_prone_annotations:2.36.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("io.getstream:stream-webrtc-android:1.3.10")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

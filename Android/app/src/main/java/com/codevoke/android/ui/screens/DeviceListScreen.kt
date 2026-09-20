@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,17 +15,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronLeft
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Computer
-import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Numbers
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -34,10 +29,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,42 +37,31 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.codevoke.android.data.RemoteDeviceInfo
-import com.codevoke.android.data.RemoteDeviceResolveResponse
 import com.codevoke.android.ui.components.CodevokeGlassCard
 import com.codevoke.android.ui.components.CodevokeIconButton
 import com.codevoke.android.ui.components.BlackCapsuleButton
 import com.codevoke.android.ui.components.SectionTitle
-import com.codevoke.android.ui.components.SelectionPill
 import com.codevoke.android.ui.components.WhiteGlassBackground
 import com.codevoke.android.ui.theme.CodevokeColor
 import com.codevoke.android.ui.theme.CodevokeRadius
 
-private enum class DeviceConnectionMode {
-    Devices,
-    Code,
-}
-
 @Composable
 fun DeviceListScreen(
-    devices: List<RemoteDeviceInfo>,
-    loading: Boolean,
-    deviceCode: String,
-    resolving: Boolean,
+    hosts: List<String>,
+    scanning: Boolean,
     connecting: Boolean,
-    resolvedDevice: RemoteDeviceResolveResponse?,
+    manualHost: String,
+    manualPort: String,
     message: String?,
-    connectedDeviceId: Int?,
-    connectedTransport: String?,
+    connectedHost: String?,
     goBack: () -> Unit,
-    refresh: () -> Unit,
-    connect: (RemoteDeviceInfo) -> Unit,
-    onCodeChange: (String) -> Unit,
-    resolve: () -> Unit,
-    connectResolved: () -> Unit,
+    rescan: () -> Unit,
+    onManualHostChange: (String) -> Unit,
+    onManualPortChange: (String) -> Unit,
+    connectManual: () -> Unit,
+    connectHost: (String) -> Unit,
+    openChat: () -> Unit,
 ) {
-    var mode by remember { mutableStateOf(DeviceConnectionMode.Devices) }
-
     Box(Modifier.fillMaxSize()) {
         WhiteGlassBackground(Modifier.fillMaxSize())
         Column(
@@ -94,45 +74,26 @@ fun DeviceListScreen(
                 .padding(horizontal = 18.dp, vertical = 22.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            TopTitleBar(
-                title = "远程设备",
-                goBack = goBack,
-                trailing = { LoggedInChip() },
+            TopTitleBar(title = "远程设备", goBack = goBack)
+            DevicePageHeader()
+            ManualConnectCard(
+                manualHost = manualHost,
+                manualPort = manualPort,
+                connecting = connecting,
+                onManualHostChange = onManualHostChange,
+                onManualPortChange = onManualPortChange,
+                connectManual = connectManual,
             )
-            DevicePageHeader(mode)
-            SegmentedTabs(mode = mode, onModeChange = { mode = it })
-            if (mode == DeviceConnectionMode.Devices) {
-                DeviceSection(
-                    devices = devices,
-                    loading = loading,
-                    message = message,
-                    connectedDeviceId = connectedDeviceId,
-                    connectedTransport = connectedTransport,
-                    refresh = refresh,
-                    connect = connect,
-                )
-                CodeEntryShortcut { mode = DeviceConnectionMode.Code }
-            } else {
-                DeviceCodeSection(
-                    deviceCode = deviceCode,
-                    resolving = resolving,
-                    connecting = connecting,
-                    resolvedDevice = resolvedDevice,
-                    message = message,
-                    onCodeChange = onCodeChange,
-                    resolve = resolve,
-                    connect = connectResolved,
-                )
-                ResolvedDeviceCard(resolvedDevice)
-                BlackCapsuleButton(
-                    text = if (connecting) "连接中..." else "连接这台电脑",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(58.dp),
-                    enabled = resolvedDevice != null && !connecting,
-                    onClick = connectResolved,
-                )
-            }
+            DiscoveredSection(
+                hosts = hosts,
+                scanning = scanning,
+                connecting = connecting,
+                message = message,
+                connectedHost = connectedHost,
+                rescan = rescan,
+                connectHost = connectHost,
+                openChat = openChat,
+            )
         }
     }
 }
@@ -166,20 +127,16 @@ fun TopTitleBar(title: String, goBack: () -> Unit, trailing: (@Composable () -> 
 }
 
 @Composable
-private fun DevicePageHeader(mode: DeviceConnectionMode) {
+private fun DevicePageHeader() {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            if (mode == DeviceConnectionMode.Devices) "选择电脑" else "输入设备码",
+            "连接电脑",
             color = CodevokeColor.Ink,
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            if (mode == DeviceConnectionMode.Devices) {
-                "连接已登录账号的远程设备，或输入设备码。"
-            } else {
-                "设备码在电脑端远程账号卡片中查看。"
-            },
+            "同一 Wi-Fi 下的局域网直连，无需账号。",
             color = CodevokeColor.Muted,
             fontSize = 14.sp,
             lineHeight = 20.sp,
@@ -188,82 +145,78 @@ private fun DevicePageHeader(mode: DeviceConnectionMode) {
 }
 
 @Composable
-private fun LoggedInChip() {
-    CodevokeGlassCard(corner = 20.dp, shadowAlpha = 0.02f) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
+private fun ManualConnectCard(
+    manualHost: String,
+    manualPort: String,
+    connecting: Boolean,
+    onManualHostChange: (String) -> Unit,
+    onManualPortChange: (String) -> Unit,
+    connectManual: () -> Unit,
+) {
+    CodevokeGlassCard(corner = CodevokeRadius.Control, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionTitle("连接地址", "电脑的局域网 IP 与端口")
+            LanTextField(value = manualHost, onValueChange = onManualHostChange, placeholder = "192.168.1.10")
+            LanTextField(value = manualPort, onValueChange = onManualPortChange, placeholder = "18765")
+            BlackCapsuleButton(
+                text = if (connecting) "连接中..." else "连接",
                 modifier = Modifier
-                    .size(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(CodevokeColor.Green),
+                    .fillMaxWidth()
+                    .height(54.dp),
+                enabled = manualHost.isNotBlank() && !connecting,
+                onClick = connectManual,
             )
-            Text("已登录", color = CodevokeColor.Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
 @Composable
-private fun SegmentedTabs(mode: DeviceConnectionMode, onModeChange: (DeviceConnectionMode) -> Unit) {
-    CodevokeGlassCard(corner = CodevokeRadius.Control, modifier = Modifier.fillMaxWidth(), shadowAlpha = 0.02f) {
-        Row(Modifier.padding(5.dp)) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(CodevokeRadius.Control))
-                    .clickable(onClick = { onModeChange(DeviceConnectionMode.Devices) }),
-            ) {
-                SelectionPill(
-                    selected = mode == DeviceConnectionMode.Devices,
-                    text = "我的设备",
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(CodevokeRadius.Control))
-                    .clickable(onClick = { onModeChange(DeviceConnectionMode.Code) }),
-            ) {
-                SelectionPill(
-                    selected = mode == DeviceConnectionMode.Code,
-                    text = "设备码",
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
+private fun LanTextField(value: String, onValueChange: (String) -> Unit, placeholder: String) {
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = { Text(placeholder, color = CodevokeColor.Muted.copy(alpha = 0.44f)) },
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.White.copy(alpha = 0.68f),
+            unfocusedContainerColor = Color.White.copy(alpha = 0.68f),
+            disabledContainerColor = Color.White.copy(alpha = 0.42f),
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent,
+        ),
+        shape = RoundedCornerShape(18.dp),
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
-private fun DeviceSection(
-    devices: List<RemoteDeviceInfo>,
-    loading: Boolean,
+private fun DiscoveredSection(
+    hosts: List<String>,
+    scanning: Boolean,
+    connecting: Boolean,
     message: String?,
-    connectedDeviceId: Int?,
-    connectedTransport: String?,
-    refresh: () -> Unit,
-    connect: (RemoteDeviceInfo) -> Unit,
+    connectedHost: String?,
+    rescan: () -> Unit,
+    connectHost: (String) -> Unit,
+    openChat: () -> Unit,
 ) {
     CodevokeGlassCard(corner = CodevokeRadius.Control, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle("我的设备", "来自当前账号的电脑", modifier = Modifier.weight(1f))
-                RefreshChip(loading = loading, refresh = refresh)
+                SectionTitle("局域网设备", "自动扫描当前 Wi-Fi 网段", modifier = Modifier.weight(1f))
+                RefreshChip(loading = scanning, refresh = rescan)
             }
             when {
-                loading && devices.isEmpty() -> LoadingState()
-                devices.isEmpty() -> EmptyOrMessageState(message = message, refresh = refresh)
+                scanning && hosts.isEmpty() -> ScanningState()
+                hosts.isEmpty() -> EmptyScanState(message = message, rescan = rescan)
                 else -> {
-                    devices.forEach { device ->
-                        DeviceRow(
-                            device = device,
-                            isConnected = device.id == connectedDeviceId,
-                            connectedTransport = if (device.id == connectedDeviceId) connectedTransport else null,
-                            connect = { connect(device) },
+                    hosts.forEach { host ->
+                        LanHostRow(
+                            host = host,
+                            isConnected = host == connectedHost,
+                            connecting = connecting,
+                            onClick = { if (host == connectedHost) openChat() else connectHost(host) },
                         )
                     }
                     if (!message.isNullOrBlank()) {
@@ -276,14 +229,12 @@ private fun DeviceSection(
 }
 
 @Composable
-private fun DeviceRow(device: RemoteDeviceInfo, isConnected: Boolean, connectedTransport: String?, connect: () -> Unit) {
-    val canConnect = device.canRequestConnection()
-    val contentAlpha = if (canConnect || isConnected) 1f else 0.42f
+private fun LanHostRow(host: String, isConnected: Boolean, connecting: Boolean, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
-            .background(Color.White.copy(alpha = if (isConnected) 0.72f else if (canConnect) 0.54f else 0.32f))
+            .background(Color.White.copy(alpha = if (isConnected) 0.72f else 0.54f))
             .then(if (isConnected) Modifier.border(1.5.dp, CodevokeColor.Ink.copy(alpha = 0.18f), RoundedCornerShape(22.dp)) else Modifier)
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -293,208 +244,55 @@ private fun DeviceRow(device: RemoteDeviceInfo, isConnected: Boolean, connectedT
             modifier = Modifier
                 .size(44.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White.copy(alpha = if (canConnect || isConnected) 0.72f else 0.46f)),
+                .background(Color.White.copy(alpha = 0.72f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Rounded.Computer,
                 contentDescription = null,
-                tint = CodevokeColor.Ink.copy(alpha = contentAlpha),
+                tint = CodevokeColor.Ink,
                 modifier = Modifier.size(27.dp),
             )
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                device.deviceName,
-                color = CodevokeColor.Ink.copy(alpha = contentAlpha),
+                host,
+                color = CodevokeColor.Ink,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                deviceSubtitle(device, isConnected, connectedTransport),
-                color = CodevokeColor.Muted.copy(alpha = if (canConnect || isConnected) 1f else 0.72f),
+                if (isConnected) "已连接" else "局域网可连接",
+                color = CodevokeColor.Muted,
                 fontSize = 13.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
         }
         if (isConnected) {
             Text(
-                connectedTransportLabel(connectedTransport),
+                "进入",
+                modifier = Modifier
+                    .clip(RoundedCornerShape(18.dp))
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
                 color = Color(0xFF2E7D32),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
             )
-        } else if (canConnect) {
-            BlackCapsuleButton(text = device.connectButtonText(), modifier = Modifier.height(44.dp), onClick = connect)
-        }
-    }
-}
-
-@Composable
-private fun CodeEntryShortcut(openDeviceCode: () -> Unit) {
-    CodevokeGlassCard(corner = CodevokeRadius.Control, modifier = Modifier.fillMaxWidth()) {
-        Row(
-            Modifier
-                .clip(RoundedCornerShape(CodevokeRadius.Control))
-                .clickable(onClick = openDeviceCode)
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color.White.copy(alpha = 0.58f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Rounded.Numbers, contentDescription = null, tint = CodevokeColor.Ink, modifier = Modifier.size(27.dp))
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("输入设备码", color = CodevokeColor.Ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                Text("用电脑端显示的固定设备码连接", color = CodevokeColor.Muted, fontSize = 13.sp)
-            }
-            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = CodevokeColor.Muted.copy(alpha = 0.55f), modifier = Modifier.size(24.dp))
-        }
-    }
-}
-
-@Composable
-private fun DeviceCodeSection(
-    deviceCode: String,
-    resolving: Boolean,
-    connecting: Boolean,
-    resolvedDevice: RemoteDeviceResolveResponse?,
-    message: String?,
-    onCodeChange: (String) -> Unit,
-    resolve: () -> Unit,
-    connect: () -> Unit,
-) {
-    CodevokeGlassCard(corner = CodevokeRadius.Control, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            SectionTitle("固定设备码", "支持 Mac / Windows / 其他桌面设备")
-            TextField(
-                value = deviceCode,
-                onValueChange = onCodeChange,
-                placeholder = { Text("ABCD-EFGH-12", color = CodevokeColor.Muted.copy(alpha = 0.44f)) },
-                trailingIcon = {
-                    Icon(Icons.Rounded.ContentCopy, contentDescription = null, tint = CodevokeColor.Muted, modifier = Modifier.size(28.dp))
-                },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.White.copy(alpha = 0.68f),
-                    unfocusedContainerColor = Color.White.copy(alpha = 0.68f),
-                    disabledContainerColor = Color.White.copy(alpha = 0.42f),
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                ),
-                shape = RoundedCornerShape(18.dp),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SecondaryActionButton(
-                    text = if (resolving) "查找中..." else "查找设备",
-                    loading = resolving,
-                    enabled = !resolving,
-                    onClick = resolve,
-                    modifier = Modifier.weight(1f),
-                )
-                BlackCapsuleButton(
-                    text = if (connecting) "连接中..." else "连接",
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp),
-                    enabled = resolvedDevice != null && !connecting,
-                    onClick = connect,
-                )
-            }
-            Text("解析成功后显示设备名称和确认状态。", color = CodevokeColor.Muted, fontSize = 12.sp, lineHeight = 17.sp)
-            if (!message.isNullOrBlank()) {
-                Text(message, color = CodevokeColor.Muted, fontSize = 12.sp, lineHeight = 17.sp)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ResolvedDeviceCard(resolvedDevice: RemoteDeviceResolveResponse?) {
-    if (resolvedDevice == null) return
-    CodevokeGlassCard(corner = CodevokeRadius.Control, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(RoundedCornerShape(17.dp))
-                        .background(Color.White.copy(alpha = 0.64f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Rounded.Computer, contentDescription = null, tint = CodevokeColor.Ink, modifier = Modifier.size(30.dp))
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        resolvedDevice.deviceName,
-                        color = CodevokeColor.Ink,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        "${resolvedDevice.platform} · ${if (resolvedDevice.requiresConfirm) "需要电脑端确认" else "可直接连接"}",
-                        color = CodevokeColor.Muted,
-                        fontSize = 13.sp,
-                    )
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(CodevokeColor.Line),
-            )
-            Text("等待确认时保留在本页，不跳转、不遮挡主聊天页。", color = CodevokeColor.Muted, fontSize = 12.sp, lineHeight = 17.sp)
-        }
-    }
-}
-
-@Composable
-private fun RefreshChip(loading: Boolean, refresh: () -> Unit) {
-    CodevokeGlassCard(corner = 18.dp, shadowAlpha = 0.02f) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(18.dp))
-                .clickable(enabled = !loading, onClick = refresh)
-                .padding(horizontal = 14.dp, vertical = 9.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    strokeWidth = 2.dp,
-                    color = CodevokeColor.Ink,
-                    trackColor = CodevokeColor.Line,
-                )
-            } else {
-                Icon(Icons.Rounded.Refresh, contentDescription = null, tint = CodevokeColor.Ink, modifier = Modifier.size(16.dp))
-            }
-            Text(
-                if (loading) "刷新中" else "刷新",
-                color = CodevokeColor.Ink.copy(alpha = if (loading) 0.68f else 1f),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
+        } else {
+            BlackCapsuleButton(
+                text = if (connecting) "连接中..." else "连接",
+                modifier = Modifier.height(44.dp),
+                enabled = !connecting,
+                onClick = onClick,
             )
         }
     }
 }
 
 @Composable
-private fun LoadingState() {
+private fun ScanningState() {
     Row(
         Modifier
             .fillMaxWidth()
@@ -511,14 +309,14 @@ private fun LoadingState() {
             trackColor = CodevokeColor.Line,
         )
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("正在刷新设备", color = CodevokeColor.Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            Text("正在获取当前账号的桌面设备。", color = CodevokeColor.Muted, fontSize = 12.sp)
+            Text("正在扫描局域网", color = CodevokeColor.Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text("在 Wi-Fi 网段内探测电脑端连接服务。", color = CodevokeColor.Muted, fontSize = 12.sp)
         }
     }
 }
 
 @Composable
-private fun EmptyOrMessageState(message: String?, refresh: () -> Unit) {
+private fun EmptyScanState(message: String?, rescan: () -> Unit) {
     val hasMessage = !message.isNullOrBlank()
     Row(
         Modifier
@@ -544,9 +342,9 @@ private fun EmptyOrMessageState(message: String?, refresh: () -> Unit) {
             )
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(if (hasMessage) "暂时无法获取设备" else "还没有远程设备", color = CodevokeColor.Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text("没有发现设备", color = CodevokeColor.Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             Text(
-                message?.takeIf { it.isNotBlank() } ?: "请先在电脑端登录同一账号并开启远程设备。",
+                message?.takeIf { it.isNotBlank() } ?: "请确认电脑端已开启连接服务，且手机与电脑在同一 Wi-Fi。",
                 color = CodevokeColor.Muted,
                 fontSize = 12.sp,
                 lineHeight = 17.sp,
@@ -556,7 +354,7 @@ private fun EmptyOrMessageState(message: String?, refresh: () -> Unit) {
             "重试",
             modifier = Modifier
                 .clip(RoundedCornerShape(18.dp))
-                .clickable(onClick = refresh)
+                .clickable(onClick = rescan)
                 .padding(horizontal = 12.dp, vertical = 9.dp),
             color = CodevokeColor.Ink,
             fontSize = 13.sp,
@@ -566,69 +364,32 @@ private fun EmptyOrMessageState(message: String?, refresh: () -> Unit) {
 }
 
 @Composable
-private fun SecondaryActionButton(
-    text: String,
-    loading: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    CodevokeGlassCard(corner = 18.dp, modifier = modifier.fillMaxWidth(), fill = Color.White.copy(alpha = 0.72f), shadowAlpha = 0.02f) {
+private fun RefreshChip(loading: Boolean, refresh: () -> Unit) {
+    CodevokeGlassCard(corner = 18.dp, shadowAlpha = 0.02f) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.Center,
+                .clip(RoundedCornerShape(18.dp))
+                .clickable(enabled = !loading, onClick = refresh)
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (loading) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
+                    modifier = Modifier.size(14.dp),
                     strokeWidth = 2.dp,
                     color = CodevokeColor.Ink,
                     trackColor = CodevokeColor.Line,
                 )
-                Spacer(Modifier.width(8.dp))
+            } else {
+                Icon(Icons.Rounded.Refresh, contentDescription = null, tint = CodevokeColor.Ink, modifier = Modifier.size(16.dp))
             }
             Text(
-                text,
-                color = CodevokeColor.Ink.copy(alpha = if (enabled) 1f else 0.52f),
+                if (loading) "扫描中" else "重新扫描",
+                color = CodevokeColor.Ink.copy(alpha = if (loading) 0.68f else 1f),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
             )
         }
     }
 }
-
-private fun deviceSubtitle(device: RemoteDeviceInfo, isConnected: Boolean = false, connectedTransport: String? = null): String {
-    val platform = device.platform?.takeIf { it.isNotBlank() } ?: "macOS"
-    if (isConnected) {
-        return listOfNotNull(platform, connectedTransportLabel(connectedTransport)).joinToString(" · ")
-    }
-    val status = when {
-        !device.remoteEnabled -> "远程关闭"
-        !device.status.equals("active", ignoreCase = true) -> device.status.ifBlank { "不可连接" }
-        !device.online -> "离线"
-        else -> "在线"
-    }
-    val transport = when {
-        device.hasDirectEndpoint() -> "局域网可连接"
-        device.canRequestConnection() -> "信令可请求"
-        !device.lastSeenAt.isNullOrBlank() -> "上次在线 ${device.lastSeenAt}"
-        else -> null
-    }
-    return listOfNotNull(platform, status, transport).joinToString(" · ")
-}
-
-private fun connectedTransportLabel(transport: String?): String = when (transport) {
-    "lan" -> "局域网入网"
-    "public" -> "公网入网"
-    "p2p" -> "跨网入网"
-    "tunnel" -> "跨网入网"
-    else -> "已连接"
-}
-
-private fun RemoteDeviceInfo.connectButtonText(): String =
-    if (hasDirectEndpoint()) "连接" else "请求连接"
