@@ -3,6 +3,7 @@ import type {
   DesktopNotificationRequest,
   ProjectDirectorySelection,
   RemoteHostBridge,
+  UpdateBridge,
   WindowControlAction
 } from "../shared/ipc";
 import type { ProjectBridge } from "../shared/project";
@@ -57,6 +58,7 @@ declare global {
       };
       chat: ChatBridge;
       remoteHost: RemoteHostBridge;
+      updates: UpdateBridge;
     };
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "acode-windows",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "private": true,
   "description": "acode — Windows desktop client built with Electron, React, and TypeScript.",
   "author": "acode",
@@ -21,6 +21,7 @@
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.12",
     "default-gateway": "^7.2.2",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^0.468.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
@@ -93,7 +94,14 @@
     },
     "portable": {
       "artifactName": "acode-Portable-${version}-${arch}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "crispvibe",
+        "repo": "Acode-Desktop"
+      }
+    ]
   },
   "license": "PolyForm-Noncommercial-1.0.0"
 }

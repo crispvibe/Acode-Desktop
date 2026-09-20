@@ -4004,6 +4004,21 @@ button:disabled,
   box-shadow: var(--soft-shadow);
 }
 
+.release-notes {
+  max-height: 180px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  overflow-y: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  color: #77777d;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .legal-row {
   display: grid;
   grid-template-columns: 28px 1fr 16px;

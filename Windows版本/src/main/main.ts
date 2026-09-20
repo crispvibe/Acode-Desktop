@@ -45,6 +45,7 @@ import { ChatSessionStore } from "./chat/chatSessionStore.js";
 import { AppSettingsService, CLIProfileService, probeCLI } from "./settings/service.js";
 import { RemoteHostController } from "./remoteHost/RemoteHostController.js";
 import { resolveExistingDirectory } from "./security/pathGuards.js";
+import { checkAppUpdatesOnStart, registerAppUpdater } from "./update/appUpdater.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -401,10 +402,12 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     registerIpcHandlers();
+    registerAppUpdater();
     await createMainWindow();
     await remoteHostController.init().catch((error: unknown) => {
       console.error("Failed to init remote host", error);
     });
+    checkAppUpdatesOnStart();
   }).catch((error: unknown) => {
     console.error("Failed to start acode Windows", error);
     app.quit();

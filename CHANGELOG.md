@@ -14,6 +14,8 @@
 - **清理**：删除旧账号体系相关文档与设计图（登录/注册设计图、三份旧体系审计报告、Windows 交接文档、progress.txt）；删除官网设计稿与账号时代设备列表设计图；清理 iOS 本地化表中 130+ 条登录/注册/账号/设备码/信令/TURN 死文案，移除 `RemoteUserFacingText` 中已死的连接审批/权益映射方法与 `codevokeAuthGlass*` 死代码、Android `AuthGlass*` 死 token；脚本残留旧名统一为 acode。
 - **仓库**：更名为 `crispvibe/Acode-Desktop`，远端仅保留 `main` 单一分支。
 - **聊天体验修复**：流式卡顿（macOS 结构指纹误含文本长度→每 flush 全量重建；Windows 逐 token set+全量序列化→90ms 合帧；移动端 WS 解码占主线程+每 patch 重组→外观字段合并发布）；滚动抖动（程序化回波吞用户滚动/动画互打→近底阈值即时吸附）；工具卡片假按钮（stale waiting 卡无人清理、IPC ack 被 void 恒真→真实 ack 翻转+不支持交互的 CLI 禁用按钮）。
+- **跨网直连（WAN）**：四端实现零第三方直连——自签 ECDSA TLS（wss）+ 配对 token（Bearer 鉴权+限流封禁）+ SPKI-SHA256 证书指纹绑定；host 端 NAT-PMP/UPnP 端口映射 + 全球 IPv6 枚举 + CGNAT 自检 + 诊断页；移动端扫码/连接串/局域网 6 位码三种配对 + Happy Eyeballs 竞速 + 同 LAN 静默刷新地址；LAN/WAN 统一加密通道。
+- **应用内更新**：四端接入 GitHub Releases 版本检测——macOS 下载 DMG 自动替换安装并重启；Windows 走 electron-updater（github provider）；Android 下载 APK 跳系统安装；iOS 检测后跳发布页（未签名 IPA 无法自装）。四端版本号统一为 0.5.0。
 - **多 CLI 支持**：host 端从 2 家扩到 9 家——新增 Cursor Agent、Gemini、Qwen Code、Copilot、Kimi、Antigravity、Kiro 适配（stream-json/JSONL 事件统一映射到面板卡片；不支持交互式权限回执的 CLI 走启动 flag 降级；resume 能力按各 CLI 实际支持接入）；iOS/Android CLI 选择器扩为 9 项目录，未收录值兜底显示。
 - **文档**：README 明确当前支持 Claude Code / Codex 两个 CLI，更多 CLI（cursor-agent、Gemini CLI 等）规划中，欢迎贡献适配。
 

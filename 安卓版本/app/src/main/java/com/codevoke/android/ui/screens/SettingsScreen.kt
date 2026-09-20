@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NearMe
 import androidx.compose.material.icons.rounded.Nightlight
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -54,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.codevoke.android.data.RemoteCapability
 import com.codevoke.android.ui.components.SectionTitle
 import com.codevoke.android.ui.components.WhiteGlassBackground
+import com.codevoke.android.ui.state.UpdateUiState
 import com.codevoke.android.ui.theme.CodevokeColor
 import java.util.Locale
 
@@ -89,9 +91,12 @@ internal fun cliDisplayName(cli: String): String {
 fun SettingsScreen(
     connectionStatus: String,
     selectedCLI: String,
+    update: UpdateUiState,
     goBack: () -> Unit,
     openDevices: () -> Unit,
     openCLI: () -> Unit,
+    checkUpdates: () -> Unit,
+    showUpdateDialog: () -> Unit,
 ) {
     val context = LocalContext.current
     val packageInfo = remember {
@@ -131,6 +136,25 @@ fun SettingsScreen(
             }
             SettingsSectionCard {
                 Column {
+                    if (update.update != null) {
+                        UpdateBannerRow(
+                            version = update.update.version,
+                            onClick = showUpdateDialog,
+                        )
+                        SettingsDivider()
+                    }
+                    SettingsMenuRow(
+                        title = "检查更新",
+                        subtitle = when {
+                            update.checking -> "正在检查更新…"
+                            update.update != null -> "发现新版本 v${update.update.version}"
+                            !update.notice.isNullOrBlank() -> update.notice
+                            else -> "当前版本 $versionName"
+                        },
+                        icon = Icons.Rounded.SystemUpdate,
+                        onClick = checkUpdates,
+                    )
+                    SettingsDivider()
                     SettingsMenuRow("关于 acode", versionText, Icons.Rounded.Info, showChevron = false)
                     SettingsDivider()
                     Column(
@@ -194,6 +218,35 @@ private fun SettingsMenuRow(
                 modifier = Modifier.size(18.dp),
             )
         }
+    }
+}
+
+/// 设置页顶部「有新版本」横幅：点击重新打开更新弹窗。
+@Composable
+private fun UpdateBannerRow(version: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SettingsPlainIcon(icon = Icons.Rounded.ArrowCircleUp, tint = Color(0xFF2E7D32))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("发现新版本", color = CodevokeColor.Ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("v$version · 点击查看更新内容", color = CodevokeColor.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(
+            "更新",
+            modifier = Modifier
+                .clip(RoundedCornerShape(18.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            color = Color(0xFF2E7D32),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 

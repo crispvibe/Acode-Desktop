@@ -180,3 +180,14 @@
 "粘贴剪贴板" = "Paste from clipboard";
 "同一 Wi‑Fi 下自动发现运行 acode 的电脑；扫码或输入连接串可跨网直连。" = "Computers running acode are discovered on the same Wi‑Fi; scan a QR code or paste a connection string for direct access anywhere.";
 "配对" = "Pair";
+"检查更新" = "Check for Updates";
+"正在检查更新…" = "Checking for updates…";
+"发现新版本" = "New Version Available";
+"发现新版本 v%@" = "New version v%@ available";
+"v%@ · 点按前往下载" = "v%@ · Tap to download";
+"前往下载" = "Download";
+"发现新版本，点按前往下载" = "New version available. Tap to download.";
+"已是最新版本。" = "You're on the latest version.";
+"检查更新失败，请稍后重试。" = "Couldn't check for updates. Try again later.";
+"暂无可用更新。" = "No update available.";
+"当前版本 %@" = "Current version %@";

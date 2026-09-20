@@ -104,6 +104,7 @@ struct SettingsPageView: View {
 
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var modelService: ChatModelService
+    @ObservedObject private var updateService = UpdateService.shared
     private let showsBackButton: Bool
 
     init(showsBackButton: Bool = true) {
@@ -245,6 +246,11 @@ struct SettingsPageView: View {
         }
         .onChange(of: selectedGlobalRuleKind) { _, _ in
             loadGlobalRuleText()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .acodeShowUpdateSettings)) { _ in
+            withAnimation(.easeOut(duration: 0.14)) {
+                selectedCategory = .about
+            }
         }
         .sheet(item: $editingClaudeProfile) { profile in
             claudeProfileEditorSheet(profile)
@@ -1381,10 +1387,148 @@ struct SettingsPageView: View {
 
     private var updateSection: some View {
         settingsCard(title: "版本更新") {
-            HStack {
-                Text("当前版本：\(appVersion)（\(buildNumber)）")
-                    .font(.system(size: 13))
-                Spacer()
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("当前版本：\(appVersion)（\(buildNumber)）")
+                        .font(.system(size: 13))
+                    if let lastCheckedAt = updateService.lastCheckedAt {
+                        Text("上次检查：\(lastCheckedAt.formatted(date: .numeric, time: .shortened))")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                if updateService.checkState == .checking {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Button("检查更新") { updateService.checkManually() }
+                        .buttonStyle(SettingsSecondaryButtonStyle())
+                }
+            }
+
+            updateStateContent
+        }
+    }
+
+    @ViewBuilder
+    private var updateStateContent: some View {
+        switch updateService.checkState {
+        case .idle:
+            EmptyView()
+        case .checking:
+            Text("正在检查更新…")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        case .upToDate:
+            VStack(alignment: .leading, spacing: 4) {
+                settingsInlineMessage("已是最新版本。")
+                if let release = updateService.latestRelease {
+                    Text("最新发布：\(release.tagName)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        case .updateAvailable:
+            if let release = updateService.latestRelease {
+                updateAvailableContent(release)
+            }
+        case .failed(let message):
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundStyle(Color.red.opacity(0.88))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func updateAvailableContent(_ release: UpdateService.ReleaseInfo) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("发现新版本：\(release.tagName)")
+                    .font(.system(size: 13, weight: .semibold))
+                if release.assetSize > 0 {
+                    Text("安装包：\(release.assetName)（\(ByteCountFormatter.string(fromByteCount: release.assetSize, countStyle: .file))）")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if !release.notes.isEmpty {
+                ScrollView {
+                    Text(release.notes)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(10)
+                }
+                .frame(maxHeight: 160)
+                .background(AppTheme.inputSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AppTheme.hairline, lineWidth: 1))
+            }
+
+            updateInstallContent(release)
+        }
+    }
+
+    @ViewBuilder
+    private func updateInstallContent(_ release: UpdateService.ReleaseInfo) -> some View {
+        switch updateService.installState {
+        case .idle:
+            HStack(spacing: 10) {
+                Button("下载并安装") { updateService.downloadAndInstall() }
+                    .buttonStyle(SettingsPrimaryButtonStyle())
+                Button("查看发布页") { updateService.openReleasePage() }
+                    .buttonStyle(SettingsSecondaryButtonStyle())
+            }
+        case .downloading(let progress):
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text("正在下载更新…")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    if let progress {
+                        Text("\(Int((progress * 100).rounded()))%")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let progress {
+                    ProgressView(value: progress, total: 1)
+                } else {
+                    ProgressView()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        case .installing(let step):
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(step)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        case .finished:
+            settingsInlineMessage("安装完成，正在重启…")
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 8) {
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.red.opacity(0.88))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 10) {
+                    Button("重试") { updateService.downloadAndInstall() }
+                        .buttonStyle(SettingsSecondaryButtonStyle(compact: true))
+                    if updateService.downloadedDMGURL != nil {
+                        Button("手动打开 DMG") { updateService.openDownloadedDMG() }
+                            .buttonStyle(SettingsSecondaryButtonStyle(compact: true))
+                    }
+                    Button("查看发布页") { updateService.openReleasePage() }
+                        .buttonStyle(SettingsSecondaryButtonStyle(compact: true))
+                }
             }
         }
     }

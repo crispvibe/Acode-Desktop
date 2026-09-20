@@ -44,6 +44,7 @@
 			AC1000000000000000000054 /* RemoteWanTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000054 /* RemoteWanTransport.swift */; };
 			AC1000000000000000000055 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000055 /* QRScannerView.swift */; };
 			AC1000000000000000000056 /* DevicePairingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000056 /* DevicePairingViews.swift */; };
+			AC1000000000000000000057 /* AppUpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000057 /* AppUpdateChecker.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -86,6 +87,7 @@
 			AC2000000000000000000054 /* RemoteWanTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteWanTransport.swift; sourceTree = "<group>"; };
 			AC2000000000000000000055 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 			AC2000000000000000000056 /* DevicePairingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePairingViews.swift; sourceTree = "<group>"; };
+			AC2000000000000000000057 /* AppUpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateChecker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -171,6 +173,7 @@
 					AC2000000000000000000052 /* PinnedURLSession.swift */,
 					AC2000000000000000000053 /* RemotePairingClient.swift */,
 					AC2000000000000000000054 /* RemoteWanTransport.swift */,
+					AC2000000000000000000057 /* AppUpdateChecker.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -336,6 +339,7 @@
 				AC1000000000000000000054 /* RemoteWanTransport.swift in Sources */,
 				AC1000000000000000000055 /* QRScannerView.swift in Sources */,
 				AC1000000000000000000056 /* DevicePairingViews.swift in Sources */,
+				AC1000000000000000000057 /* AppUpdateChecker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -454,7 +458,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codevoke.ios;
 				PRODUCT_NAME = acode;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -483,7 +487,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codevoke.ios;
 				PRODUCT_NAME = acode;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

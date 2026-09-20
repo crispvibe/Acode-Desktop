@@ -27,6 +27,7 @@
 		B00000000000000000000016 /* CommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000016 /* CommandBuilder.swift */; };
 		B00000000000000000000017 /* TerminalLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000017 /* TerminalLauncher.swift */; };
 		B00000000000000000000018 /* LaunchHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000018 /* LaunchHistoryStore.swift */; };
+		B00000000000000000000055 /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000055 /* UpdateService.swift */; };
 		B00000000000000000000020 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000020 /* Assets.xcassets */; };
 		B00000000000000000000021 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000024 /* SettingsView.swift */; };
 		B00000000000000000000022 /* ChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000025 /* ChatModels.swift */; };
@@ -85,6 +86,7 @@
 		F00000000000000000000016 /* CommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandBuilder.swift; sourceTree = "<group>"; };
 		F00000000000000000000017 /* TerminalLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalLauncher.swift; sourceTree = "<group>"; };
 		F00000000000000000000018 /* LaunchHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchHistoryStore.swift; sourceTree = "<group>"; };
+		F00000000000000000000055 /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
 		F00000000000000000000020 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F00000000000000000000021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F00000000000000000000022 /* Codevoke.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Codevoke.entitlements; sourceTree = "<group>"; };
@@ -235,6 +237,7 @@
 				F00000000000000000000016 /* CommandBuilder.swift */,
 				F00000000000000000000017 /* TerminalLauncher.swift */,
 				F00000000000000000000018 /* LaunchHistoryStore.swift */,
+				F00000000000000000000055 /* UpdateService.swift */,
 				G00000000000000000000009 /* Chat */,
 					G00000000000000000000010 /* RemoteChat */,
 			);
@@ -432,6 +435,7 @@
 				B00000000000000000000016 /* CommandBuilder.swift in Sources */,
 				B00000000000000000000017 /* TerminalLauncher.swift in Sources */,
 				B00000000000000000000018 /* LaunchHistoryStore.swift in Sources */,
+				B00000000000000000000055 /* UpdateService.swift in Sources */,
 				B00000000000000000000021 /* SettingsView.swift in Sources */,
 				B00000000000000000000022 /* ChatModels.swift in Sources */,
 				B00000000000000000000023 /* ChatPanelState.swift in Sources */,
@@ -615,7 +619,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 0.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codevoke.mac;
 				PRODUCT_NAME = acode;
 				SDKROOT = macosx;
@@ -642,7 +646,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 0.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codevoke.mac;
 				PRODUCT_NAME = acode;
 				SDKROOT = macosx;

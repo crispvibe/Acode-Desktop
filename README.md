@@ -18,7 +18,7 @@
 | 平台 | 安装包（GitHub Releases 最新版直达） |
 |------|-----------------------------------|
 | macOS | [acode-macos-universal.dmg](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-macos-universal.dmg) |
-| Windows | [安装包](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-Setup-0.1.0-x64.exe) · [便携版](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-Portable-0.1.0-x64.exe) |
+| Windows | [安装包 / 便携版](https://github.com/crispvibe/Acode-Desktop/releases/latest)（`acode-Setup-*-x64.exe` 安装包 / `acode-Portable-*-x64.exe` 免安装） |
 | Android | [acode-android-debug.apk](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-android-debug.apk) |
 | iOS | [acode-ios-unsigned.ipa](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-ios-unsigned.ipa)（未签名 IPA，需 TrollStore 或自签安装） |
 

@@ -2,6 +2,7 @@ import {
   ChevronLeft,
   Copy,
   Cpu,
+  ExternalLink,
   FileText,
   Folder,
   Info,
@@ -30,9 +31,10 @@ import type {
   WindowsShell,
   WindowsTerminal
 } from "@shared/settings";
-import type { RemoteHostPairingInfo, RemoteHostStatus, WanDiagnostics, WanEndpoint } from "@shared/ipc";
+import type { RemoteHostPairingInfo, RemoteHostStatus, UpdateStatus, WanDiagnostics, WanEndpoint } from "@shared/ipc";
 import { AppLogo } from "../AppLogo";
 import { selectProfiles, useSettingsStore } from "../../stores/settingsStore";
+import { useUpdateStore } from "../../stores/updateStore";
 
 type SettingsTabID =
   | "general"
@@ -900,6 +902,7 @@ function AboutSettings() {
         <div className="settings-row"><span>当前版本</span><b>{appInfo?.version ?? "读取中"}</b></div>
         <div className="settings-row"><span>平台</span><b>{appInfo ? `${appInfo.platform} / ${appInfo.arch}` : "读取中"}</b></div>
       </div>
+      <UpdateSettings />
       <div className="settings-card">
         <div className="settings-row"><span>版权</span><b>© 2026 crispvibe</b></div>
         <div className="settings-row"><span>许可</span><b>仅限个人非商业使用 · 禁止商用</b></div>
@@ -909,6 +912,86 @@ function AboutSettings() {
       </div>
     </div>
   );
+}
+
+function UpdateSettings() {
+  const status = useUpdateStore((state) => state.status);
+  const load = useUpdateStore((state) => state.load);
+  const check = useUpdateStore((state) => state.check);
+  const quitAndInstall = useUpdateStore((state) => state.quitAndInstall);
+  const openReleases = useUpdateStore((state) => state.openReleases);
+
+  useEffect(() => {
+    if (!status) {
+      void load();
+    }
+  }, [load, status]);
+
+  const busy = status?.phase === "checking" || status?.phase === "downloading";
+
+  return (
+    <div className="settings-card">
+      <div className="settings-card-intro">
+        <h3>版本更新</h3>
+        <p>通过 GitHub Releases 检测新版本；安装版自动下载并在重启后安装。</p>
+      </div>
+      <div className="settings-row"><span>更新状态</span><b>{updateStatusText(status)}</b></div>
+      {status?.version ? (
+        <div className="settings-row"><span>新版本</span><b>v{status.version}</b></div>
+      ) : null}
+      {status?.releaseNotes ? (
+        <p className="release-notes">{status.releaseNotes}</p>
+      ) : null}
+      {status?.phase === "error" && status.error ? (
+        <div className="settings-row"><span>错误</span><b>{status.error}</b></div>
+      ) : null}
+      <div className="settings-actions">
+        {!status?.supported ? null : status.phase === "downloaded" && !status.portable ? (
+          <button className="settings-primary-button" type="button" onClick={() => void quitAndInstall()}>
+            <RotateCcw size={14} /> 立即重启安装
+          </button>
+        ) : status.portable && status.version ? (
+          <button className="settings-primary-button" type="button" onClick={() => void openReleases()}>
+            <ExternalLink size={14} /> 去 Releases 下载
+          </button>
+        ) : (
+          <button className="settings-inline-button" type="button" disabled={busy} onClick={() => void check()}>
+            <RefreshCw size={14} /> {status.phase === "checking" ? "检查中..." : status.phase === "downloading" ? "下载中..." : "检查更新"}
+          </button>
+        )}
+        {status?.supported ? (
+          <button className="settings-inline-button" type="button" onClick={() => void openReleases()}>
+            <ExternalLink size={14} /> Releases 页面
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function updateStatusText(status: UpdateStatus | null): string {
+  if (!status) {
+    return "读取中";
+  }
+  if (!status.supported) {
+    return "开发模式不检测更新";
+  }
+  switch (status.phase) {
+    case "checking":
+      return "正在检查更新...";
+    case "available":
+      return status.portable ? "发现新版本（便携版需手动下载）" : "发现新版本，准备下载";
+    case "downloading":
+      return `正在下载更新 ${status.progressPercent ?? 0}%`;
+    case "downloaded":
+      return "已下载完成，重启后安装";
+    case "up-to-date":
+      return "已是最新版本";
+    case "error":
+      return "检查更新失败";
+    default:
+      return "待检查";
+  }
 }
 
 function SettingsPanel({ children, subtitle, title }: { children: React.ReactNode; subtitle: string; title: string }) {

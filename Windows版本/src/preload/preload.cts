@@ -8,6 +8,8 @@ import type {
   RemoteHostCommandResult,
   RemoteHostPairingInfo,
   RemoteHostStatus,
+  UpdateBridge,
+  UpdateStatus,
   WindowControlAction
 } from "../shared/ipc";
 import type { PanelStateSnapshot } from "../shared/remoteProtocol";
@@ -89,7 +91,12 @@ const ipcChannels = {
   remoteHostStatus: "remote-host:status",
   remoteHostGetPairing: "remote-host:get-pairing",
   remoteHostRevokeDevice: "remote-host:revoke-device",
-  remoteHostRefreshEndpoints: "remote-host:refresh-endpoints"
+  remoteHostRefreshEndpoints: "remote-host:refresh-endpoints",
+  updateGetStatus: "update:get-status",
+  updateCheck: "update:check",
+  updateQuitAndInstall: "update:quit-and-install",
+  updateOpenReleases: "update:open-releases",
+  updateStatusChanged: "update:status-changed"
 } as const;
 
 function toAppInfo(value: unknown): AppInfo {
@@ -143,6 +150,7 @@ function toChatBackendEventEnvelope(value: unknown): ChatBackendEventEnvelope {
 const chatEventListeners = new Set<(event: ChatBackendEventEnvelope) => void>();
 const remoteHostStatusListeners = new Set<(status: RemoteHostStatus) => void>();
 const remoteHostApplyCommandListeners = new Set<(payload: RemoteHostApplyCommandRequest) => void>();
+const updateStatusListeners = new Set<(status: UpdateStatus) => void>();
 
 ipcRenderer.on(ipcChannels.chatEvent, (_event, rawEnvelope: unknown) => {
   let envelope: ChatBackendEventEnvelope;
@@ -312,7 +320,27 @@ const api = {
         remoteHostApplyCommandListeners.delete(listener);
       };
     }
-  } satisfies RemoteHostBridge
+  } satisfies RemoteHostBridge,
+  updates: {
+    async getStatus(): Promise<UpdateStatus> {
+      return ipcRenderer.invoke(ipcChannels.updateGetStatus) as Promise<UpdateStatus>;
+    },
+    async check(): Promise<UpdateStatus> {
+      return ipcRenderer.invoke(ipcChannels.updateCheck) as Promise<UpdateStatus>;
+    },
+    async quitAndInstall(): Promise<void> {
+      await ipcRenderer.invoke(ipcChannels.updateQuitAndInstall);
+    },
+    async openReleases(): Promise<void> {
+      await ipcRenderer.invoke(ipcChannels.updateOpenReleases);
+    },
+    onStatus(listener: (status: UpdateStatus) => void): () => void {
+      updateStatusListeners.add(listener);
+      return () => {
+        updateStatusListeners.delete(listener);
+      };
+    }
+  } satisfies UpdateBridge
 };
 
 ipcRenderer.on(ipcChannels.remoteHostStatus, (_event, rawStatus: unknown) => {
@@ -332,6 +360,19 @@ ipcRenderer.on(ipcChannels.remoteHostApplyCommand, (_event, rawPayload: unknown)
   const payload = rawPayload as RemoteHostApplyCommandRequest;
   for (const listener of remoteHostApplyCommandListeners) {
     listener(payload);
+  }
+});
+
+ipcRenderer.on(ipcChannels.updateStatusChanged, (_event, rawStatus: unknown) => {
+  if (!rawStatus || typeof rawStatus !== "object") {
+    return;
+  }
+  const status = rawStatus as UpdateStatus;
+  if (typeof status.phase !== "string") {
+    return;
+  }
+  for (const listener of updateStatusListeners) {
+    listener(status);
   }
 });
 

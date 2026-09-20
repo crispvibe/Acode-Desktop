@@ -25,6 +25,7 @@ struct CodevokeApp: App {
                     RemoteVNCWiring.install(runtimeStore: chatRuntimeStore, appState: appState, modelService: modelService)
                     triggerModelFetch()
                     appState.showFolderPermissionOnboardingIfNeeded()
+                    UpdateService.shared.checkForUpdatesIfNeeded()
                 }
                 .onChange(of: appState.settings.apiBaseURL) { _, _ in triggerModelFetch() }
                 .onChange(of: appState.settings.apiKey) { _, _ in triggerModelFetch() }

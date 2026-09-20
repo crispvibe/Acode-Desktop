@@ -45,7 +45,13 @@ export const ipcChannels = {
   // WAN 直连：配对载荷 / 设备吊销 / endpoint 诊断刷新
   remoteHostGetPairing: "remote-host:get-pairing",
   remoteHostRevokeDevice: "remote-host:revoke-device",
-  remoteHostRefreshEndpoints: "remote-host:refresh-endpoints"
+  remoteHostRefreshEndpoints: "remote-host:refresh-endpoints",
+  // GitHub Releases 自动更新
+  updateGetStatus: "update:get-status",
+  updateCheck: "update:check",
+  updateQuitAndInstall: "update:quit-and-install",
+  updateOpenReleases: "update:open-releases",
+  updateStatusChanged: "update:status-changed"
 } as const;
 
 export const appInfoSchema = z.object({
@@ -228,4 +234,51 @@ export interface RemoteHostBridge {
   refreshEndpoints: () => Promise<RemoteHostStatus>;
   onStatus: (listener: (status: RemoteHostStatus) => void) => () => void;
   onApplyCommand: (listener: (payload: RemoteHostApplyCommandRequest) => void) => () => void;
+}
+
+// ---- GitHub Releases 自动更新（electron-updater）IPC 负载 ----
+
+/** 更新检测阶段。 */
+export const updatePhaseSchema = z.enum([
+  "idle",
+  "checking",
+  "available",
+  "downloading",
+  "downloaded",
+  "up-to-date",
+  "error"
+]);
+
+export type UpdatePhase = z.infer<typeof updatePhaseSchema>;
+
+/** 自动更新状态（主进程 → 渲染进程 / 设置页）。 */
+export const updateStatusSchema = z.object({
+  phase: updatePhaseSchema,
+  /** false = dev/未打包环境，不执行检查。 */
+  supported: z.boolean(),
+  /** true = 便携版（PORTABLE_EXECUTABLE_DIR）：只检测不自动安装，提示去 Releases 手动下载。 */
+  portable: z.boolean(),
+  /** 检测到的新版本号（available/downloading/downloaded 时有值）。 */
+  version: z.string().nullable(),
+  /** 更新说明纯文本；渲染层按纯文本输出，不做 HTML 渲染。 */
+  releaseNotes: z.string().nullable(),
+  /** 下载进度 0-100；非下载中为 null。 */
+  progressPercent: z.number().nullable(),
+  /** 最近一次检查/下载错误消息。 */
+  error: z.string().nullable(),
+  /** GitHub Releases 页面地址（便携版手动下载入口）。 */
+  releasesUrl: z.string()
+});
+
+export type UpdateStatus = z.infer<typeof updateStatusSchema>;
+
+export interface UpdateBridge {
+  getStatus: () => Promise<UpdateStatus>;
+  /** 手动触发检查；返回当前状态，后续进展经 onStatus 推送。 */
+  check: () => Promise<UpdateStatus>;
+  /** 下载完成后重启安装；非 downloaded 阶段为 no-op。 */
+  quitAndInstall: () => Promise<void>;
+  /** 系统浏览器打开 Releases 页面（便携版下载入口）。 */
+  openReleases: () => Promise<void>;
+  onStatus: (listener: (status: UpdateStatus) => void) => () => void;
 }

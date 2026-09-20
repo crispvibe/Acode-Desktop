@@ -8,6 +8,12 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import com.codevoke.android.data.AppUpdateClient
+import com.codevoke.android.data.AppUpdateInfo
+import com.codevoke.android.data.AppUpdateInstaller
+import com.codevoke.android.data.AppVersions
 import com.codevoke.android.data.EndpointStore
 import com.codevoke.android.data.LanDiscoveredHost
 import com.codevoke.android.data.PairedHost
@@ -106,6 +112,27 @@ data class ChatUiState(
     val canSendDraft: Boolean get() = inputText.trim().isNotEmpty() || attachments.isNotEmpty()
 }
 
+/// GitHub Releases 应用内更新状态（设置页 banner + 弹窗共用）。
+data class UpdateUiState(
+    val checking: Boolean = false,
+    /// 发现的新版本；null = 无更新或未检查。
+    val update: AppUpdateInfo? = null,
+    val dialogVisible: Boolean = false,
+    /// 手动检查的结果提示（"已是最新版本"/失败原因）；静默检查不填。
+    val notice: String? = null,
+    val downloading: Boolean = false,
+    /// 0f..1f；总长度未知时按 downloadedBytes 显示。
+    val downloadProgress: Float = 0f,
+    val downloadedBytes: Long = 0,
+    val downloadTotal: Long = 0,
+    val downloadedApk: java.io.File? = null,
+    /// downloadedApk 对应的版本号；检查发现更新版后旧包不能复用。
+    val downloadedVersion: String? = null,
+    val error: String? = null,
+    /// 已跳"安装未知应用"系统授权页，回到前台后自动继续安装。
+    val pendingInstall: Boolean = false,
+)
+
 private data class PendingRemoteCommand(
     val commandId: String,
     val op: String,
@@ -117,6 +144,8 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
     var devices by mutableStateOf(DeviceUiState())
         private set
     var chat by mutableStateOf(ChatUiState())
+        private set
+    var update by mutableStateOf(UpdateUiState())
         private set
     val transportLabel: String
         get() = when {
@@ -496,10 +525,132 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun resumeFromForeground() {
+        // 从"安装未知应用"授权页返回：已授权则继续安装，未授权清标记等用户再点。
+        if (update.pendingInstall) {
+            if (AppUpdateInstaller.canRequestInstalls(getApplication())) {
+                installUpdate()
+            } else {
+                update = update.copy(pendingInstall = false)
+            }
+        }
         if (chat.config.isComplete) {
             refreshChat()
         }
     }
+
+    // ---- 应用内更新（GitHub Releases，无服务器）----
+
+    /**
+     * 检查更新。manual=false 为启动静默检查：失败和无新版都不打扰用户，
+     * 有新版才弹窗 + 设置页 banner；manual=true 为设置页手动入口，结果写进 notice。
+     */
+    fun checkForUpdates(manual: Boolean = false) {
+        if (update.checking) return
+        viewModelScope.launch {
+            update = update.copy(checking = true, notice = null)
+            val latest = AppUpdateClient.fetchLatestRelease()
+            when {
+                latest == null -> update = update.copy(
+                    checking = false,
+                    notice = if (manual) "检查更新失败，请稍后重试。" else null,
+                )
+                AppVersions.isNewer(latest.tag, currentVersionName()) -> update = update.copy(
+                    checking = false,
+                    update = latest,
+                    dialogVisible = true,
+                    notice = null,
+                )
+                else -> update = update.copy(
+                    checking = false,
+                    notice = if (manual) "已是最新版本。" else null,
+                )
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        update = update.copy(dialogVisible = false)
+    }
+
+    /** 设置页 banner 点击后重新打开更新弹窗。 */
+    fun showUpdateDialog() {
+        if (update.update != null) update = update.copy(dialogVisible = true)
+    }
+
+    /** 「下载安装」：下载 APK 到缓存目录，完成后自动进入安装流程。 */
+    fun downloadAndInstallUpdate() {
+        val info = update.update ?: return
+        if (update.downloading) return
+        // 同版本已下载过直接装，不重复下载。
+        update.downloadedApk
+            ?.takeIf { it.exists() && update.downloadedVersion == info.version }
+            ?.let {
+                installUpdate()
+                return
+            }
+        viewModelScope.launch {
+            update = update.copy(
+                downloading = true,
+                downloadProgress = 0f,
+                downloadedBytes = 0,
+                downloadTotal = 0,
+                error = null,
+            )
+            try {
+                val file = AppUpdateClient.downloadApk(getApplication(), info) { soFar, total ->
+                    val progress = if (total > 0) (soFar.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
+                    update = update.copy(
+                        downloadProgress = progress,
+                        downloadedBytes = soFar,
+                        downloadTotal = total,
+                    )
+                }
+                update = update.copy(
+                    downloading = false,
+                    downloadedApk = file,
+                    downloadedVersion = info.version,
+                    downloadProgress = 1f,
+                )
+                installUpdate()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                update = update.copy(downloading = false)
+                throw cancelled
+            } catch (error: Throwable) {
+                update = update.copy(
+                    downloading = false,
+                    error = userMessage(error, "下载失败，请稍后重试。"),
+                )
+            }
+        }
+    }
+
+    /** 安装已下载 APK；API 26+ 无安装权限先跳系统授权页，回来后由 resumeFromForeground 续装。 */
+    fun installUpdate() {
+        val file = update.downloadedApk ?: return
+        val app = getApplication<Application>()
+        if (!AppUpdateInstaller.canRequestInstalls(app)) {
+            update = update.copy(pendingInstall = true)
+            AppUpdateInstaller.openInstallPermissionSettings(app)
+            return
+        }
+        update = update.copy(pendingInstall = false)
+        AppUpdateInstaller.installApk(app, file)
+    }
+
+    /** release 没附 APK 时的兜底：浏览器打开发布页手动下载。 */
+    fun openReleasePage() {
+        val url = update.update?.pageUrl ?: AppUpdateClient.RELEASE_PAGE_URL
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        getApplication<Application>().startActivity(intent)
+    }
+
+    private fun currentVersionName(): String =
+        runCatching {
+            getApplication<Application>().packageManager
+                .getPackageInfo(getApplication<Application>().packageName, 0)
+                .versionName
+        }.getOrNull().orEmpty().ifBlank { "0.0.0" }
 
     fun selectProject(project: RemoteProject) {
         cancelCosmeticPublish()

@@ -18,7 +18,7 @@ Repo: <https://github.com/crispvibe/Acode-Desktop> · License: [PolyForm Noncomm
 | Platform | Package (direct link to the latest GitHub Release) |
 |----------|----------------------------------------------------|
 | macOS | [acode-macos-universal.dmg](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-macos-universal.dmg) |
-| Windows | [Installer](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-Setup-0.1.0-x64.exe) · [Portable](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-Portable-0.1.0-x64.exe) |
+| Windows | [Installer / Portable](https://github.com/crispvibe/Acode-Desktop/releases/latest) (`acode-Setup-*-x64.exe` installer / `acode-Portable-*-x64.exe` portable) |
 | Android | [acode-android-debug.apk](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-android-debug.apk) |
 | iOS | [acode-ios-unsigned.ipa](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-ios-unsigned.ipa) (unsigned IPA — install via TrollStore or sideload with your own certificate) |
 

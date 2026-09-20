@@ -13,6 +13,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalContext
+import com.codevoke.android.ui.components.UpdateDialog
 import com.codevoke.android.ui.state.CodevokeViewModel
 
 private enum class CodevokeScreen {
@@ -60,6 +62,8 @@ fun CodevokeApp() {
     }
 
     LaunchedEffect(Unit) {
+        // 启动静默检查更新一次：失败不打扰，有新版才弹窗。
+        vm.checkForUpdates(manual = false)
         vm.scanLanDevices()
         vm.autoConnectTarget()?.let { device ->
             vm.connectPairedHost(device.hostId) { replaceScreen(CodevokeScreen.Chat) }
@@ -166,9 +170,12 @@ fun CodevokeApp() {
         CodevokeScreen.Settings -> SettingsScreen(
             connectionStatus = vm.chat.connectionStatus,
             selectedCLI = vm.chat.composer.cli,
+            update = vm.update,
             goBack = { navigateBack(if (vm.chat.config.isComplete) CodevokeScreen.Chat else CodevokeScreen.Devices) },
             openDevices = { navigateTo(CodevokeScreen.Devices) },
             openCLI = { navigateTo(CodevokeScreen.CLI) },
+            checkUpdates = { vm.checkForUpdates(manual = true) },
+            showUpdateDialog = vm::showUpdateDialog,
         )
         CodevokeScreen.CLI -> CliScreen(
             selectedCLI = vm.chat.composer.cli,
@@ -182,6 +189,24 @@ fun CodevokeApp() {
                 navigateBack(CodevokeScreen.Devices)
                 vm.pairFromConnectionString(text) { replaceScreen(CodevokeScreen.Chat) }
             },
+        )
+    }
+
+    // 更新弹窗挂在屏幕之上：任意页面发现新版本都能弹出。
+    val updateState = vm.update
+    if (updateState.dialogVisible && updateState.update != null) {
+        val context = LocalContext.current
+        val currentVersion = remember {
+            runCatching {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            }.getOrNull().orEmpty().ifBlank { "0.0.0" }
+        }
+        UpdateDialog(
+            state = updateState,
+            currentVersion = currentVersion,
+            onDismiss = vm::dismissUpdateDialog,
+            onDownloadInstall = vm::downloadAndInstallUpdate,
+            onOpenReleasePage = vm::openReleasePage,
         )
     }
 }

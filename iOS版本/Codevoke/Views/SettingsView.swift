@@ -22,6 +22,7 @@ struct SettingsView: View {
     let close: () -> Void
     @State private var navigationPath: [SettingsRoute] = []
     @State private var homeSnapshot: SettingsHomeSnapshot
+    @ObservedObject private var updateChecker = AppUpdateChecker.shared
 
     init(chatViewModel: ChatViewModel, close: @escaping () -> Void) {
         self.chatViewModel = chatViewModel
@@ -50,6 +51,18 @@ struct SettingsView: View {
 
                         SettingsSectionCard {
                             VStack(spacing: 0) {
+                                if let update = updateChecker.availableUpdate {
+                                    updateBanner(update)
+                                    SettingsDivider()
+                                }
+                                Button {
+                                    Task { await updateChecker.check(manual: true) }
+                                } label: {
+                                    SettingsMenuRow(title: "检查更新", subtitle: updateCheckSubtitle, icon: "arrow.triangle.2.circlepath")
+                                }
+                                .buttonStyle(.codevokePress)
+                                .disabled(updateChecker.isChecking)
+                                SettingsDivider()
                                 SettingsMenuRow(title: "关于 acode", subtitle: appVersionText, icon: "info.circle", showsChevron: false)
                                 SettingsDivider()
                                 VStack(alignment: .leading, spacing: 4) {
@@ -113,6 +126,55 @@ struct SettingsView: View {
         let version = info?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = info?["CFBundleVersion"] as? String ?? "1"
         return L10n.format("版本 %@ (%@)", version, build)
+    }
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    }
+
+    /// 「检查更新」行副标题：检查中 > 有新版 > 上次手动检查结果 > 当前版本。
+    private var updateCheckSubtitle: String {
+        if updateChecker.isChecking { return L10n.string("正在检查更新…") }
+        if let update = updateChecker.availableUpdate {
+            return L10n.format("发现新版本 v%@", update.version)
+        }
+        if let status = updateChecker.statusText, !status.isEmpty { return status }
+        return L10n.format("当前版本 %@", appVersion)
+    }
+
+    /// 「有新版本」横幅：iOS 未签名 IPA 无法应用内安装，点击用 Safari 打开 release 页。
+    private func updateBanner(_ update: AppUpdateInfo) -> some View {
+        Button {
+            UIApplication.shared.open(update.releasePageURL)
+        } label: {
+            HStack(spacing: 12) {
+                SettingsPlainIcon(
+                    systemName: "arrow.up.circle.fill",
+                    tint: Color(red: 0.18, green: 0.49, blue: 0.20)
+                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.key("发现新版本"))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.codevokeInk)
+                    Text(L10n.format("v%@ · 点按前往下载", update.version))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.codevokeMuted)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Text(L10n.key("前往下载"))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.black, in: Capsule())
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.codevokePress)
+        .accessibilityLabel(L10n.string("发现新版本，点按前往下载"))
     }
 }
 
