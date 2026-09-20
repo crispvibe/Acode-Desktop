@@ -73,7 +73,7 @@ Protocol: `GET /health` (discovery) · `WS /chat` (panel mirroring + commands) �
 
 This started as a paid product. After a while it became clear the models of that time couldn't deliver what was envisioned, so commercialization was dropped — the project was almost sold, then shelved the idea entirely: rather than letting it rot, better to open-source it and let it belong to everyone.
 
-The vast majority of the code was written by the author alone — thanks to every contributor who sent code or suggestions (Sanxun, wuwei, and others).
+The vast majority of the code was written by the author alone — thanks to contributor [@909693mr.zeng](https://github.com/909693) and everyone who sent in suggestions.
 
 If you find it useful, a star means a lot. Chinese-speaking users are welcome in the QQ group: [Code 开源技术交流群](https://qm.qq.com/q/yauE2vZ73y).
 
