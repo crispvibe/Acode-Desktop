@@ -1,6 +1,5 @@
 import {
   ChevronLeft,
-  ChevronRight,
   Copy,
   Cpu,
   FileText,
@@ -11,7 +10,6 @@ import {
   RotateCcw,
   Save,
   Settings,
-  ShieldCheck,
   Terminal,
   Trash2
 } from "lucide-react";
@@ -29,17 +27,12 @@ import type {
   WindowsShell,
   WindowsTerminal
 } from "@shared/settings";
-import type { RemoteConnectResult, RemoteLegalDocument, RemoteLegalDocumentType } from "@shared/account";
 import type { RemoteHostStatus } from "@shared/ipc";
-import { connectionStatusLabel as sharedConnectionStatusLabel } from "../accountRemote/accountRemoteShared";
-import { AccountRemoteControlPanel, LegalDocumentModal } from "../accountRemote";
 import { AppLogo } from "../AppLogo";
-import { useAccountRemoteStore } from "../../stores/accountStore";
 import { selectProfiles, useSettingsStore } from "../../stores/settingsStore";
 
 type SettingsTabID =
   | "general"
-  | "accountSecurity"
   | "claude"
   | "codex"
   | "remoteChat"
@@ -49,12 +42,10 @@ type SettingsTabID =
 
 interface SettingsPageProps {
   onBack?: () => void;
-  onOpenAccountDialog?: () => void;
 }
 
 const tabs = [
   { id: "general", title: "通用", icon: Settings },
-  { id: "accountSecurity", title: "账号与安全", icon: ShieldCheck },
   { id: "claude", title: "Claude Code", icon: Terminal },
   { id: "codex", title: "Codex", icon: Cpu },
   { id: "remoteChat", title: "设备连接", icon: Monitor },
@@ -84,11 +75,6 @@ const terminalOptions: Array<{ value: WindowsTerminal; label: string }> = [
   { value: "gitBash", label: "Git Bash" }
 ];
 
-const legalDocumentLinks = [
-  { type: "user_agreement", label: "用户协议" },
-  { type: "privacy_policy", label: "隐私政策" }
-] as const satisfies Array<{ type: RemoteLegalDocumentType; label: string }>;
-
 const shellOptions: Array<{ value: WindowsShell; label: string }> = [
   { value: "powershell", label: "PowerShell" },
   { value: "cmd", label: "Command Prompt" },
@@ -101,7 +87,7 @@ const wireApiOptions: Array<{ value: CLIWireApi; label: string }> = [
   { value: "chatCompletions", label: "Chat Completions" }
 ];
 
-export function SettingsPage({ onBack, onOpenAccountDialog }: SettingsPageProps = {}) {
+export function SettingsPage({ onBack }: SettingsPageProps = {}) {
   const [selectedTab, setSelectedTab] = useState<SettingsTabID>("general");
   const settings = useSettingsStore((state) => state.settings);
   const loading = useSettingsStore((state) => state.loading);
@@ -159,7 +145,7 @@ export function SettingsPage({ onBack, onOpenAccountDialog }: SettingsPageProps 
         {error ? <div className="settings-card">{error}</div> : null}
         {saving ? <p className="hint">保存中...</p> : null}
         {!settings ? <SettingsLoading loading={loading} /> : (
-          <SettingsTabContent selectedTab={selectedTab} settings={settings} onOpenAccountDialog={onOpenAccountDialog} />
+          <SettingsTabContent selectedTab={selectedTab} settings={settings} />
         )}
       </section>
     </section>
@@ -180,23 +166,19 @@ function SettingsLoading({ loading }: { loading: boolean }) {
 }
 
 function SettingsTabContent({
-  onOpenAccountDialog,
   selectedTab,
   settings
 }: {
-  onOpenAccountDialog?: () => void;
   selectedTab: SettingsTabID;
   settings: AppSettings;
 }) {
   switch (selectedTab) {
-    case "accountSecurity":
-      return <AccountSecuritySettings onOpenAccountDialog={onOpenAccountDialog} />;
     case "claude":
       return <ProfileSettings kind="claude" settings={settings} />;
     case "codex":
       return <ProfileSettings kind="codex" settings={settings} />;
     case "remoteChat":
-      return <RemoteChatSettings onOpenAccountDialog={onOpenAccountDialog} />;
+      return <RemoteChatSettings />
     case "appendRules":
       return <AppendRulesSettings settings={settings} />;
     case "globalRules":
@@ -310,106 +292,6 @@ function AuthorizedFolders({ settings }: { settings: AppSettings }) {
         </div>
       ))}
     </>
-  );
-}
-
-function AccountSecuritySettings({ onOpenAccountDialog }: { onOpenAccountDialog?: () => void }) {
-  const account = useAccountRemoteStore((state) => state.account);
-  const hydrateRemoteState = useAccountRemoteStore((state) => state.hydrateRemoteState);
-  const setConnectionStatus = useAccountRemoteStore((state) => state.setConnectionStatus);
-  const [deleteConfirmAccount, setDeleteConfirmAccount] = useState("");
-  const [deleteConfirmDestroy, setDeleteConfirmDestroy] = useState("");
-  const [deleteConfirmWaiveRights, setDeleteConfirmWaiveRights] = useState("");
-  const [deleteReason, setDeleteReason] = useState("");
-  const [accountAction, setAccountAction] = useState<string | null>(null);
-  const [accountMessage, setAccountMessage] = useState<{ kind: "info" | "success" | "error"; text: string } | null>(null);
-  const hasAccount = account.status === "authenticated" || account.status === "expired";
-  const accountTitle = account.displayAccount ?? "未登录";
-  const statusText = hasAccount ? `账号状态：${account.userStatus ?? account.status}` : "登录后可以退出登录和注销账号。";
-  const canDeleteAccount = account.status === "authenticated"
-    && deleteConfirmAccount.trim() === "我确认注销账号"
-    && deleteConfirmDestroy.trim() === "确认销毁"
-    && deleteConfirmWaiveRights.trim() === "确认放弃电脑端服务权益"
-    && !accountAction;
-
-  function requireBridge() {
-    const bridge = window.codevoke?.accountRemote;
-    if (!bridge) {
-      throw new Error("Account API is not available.");
-    }
-    return bridge;
-  }
-
-  async function runAccountAction(label: string, action: () => Promise<unknown>, successMessage: string) {
-    setAccountAction(label);
-    setAccountMessage(null);
-    try {
-      const result = await action();
-      if (result && typeof result === "object" && "account" in result && "signaling" in result) {
-        hydrateRemoteState(result as Parameters<typeof hydrateRemoteState>[0]);
-      }
-      setAccountMessage({ kind: "success", text: successMessage });
-      return true;
-    } catch (error) {
-      const text = error instanceof Error ? error.message : `${label}失败`;
-      setConnectionStatus("error", text);
-      setAccountMessage({ kind: "error", text });
-      return false;
-    } finally {
-      setAccountAction(null);
-    }
-  }
-
-  async function deleteAccount() {
-    const ok = await runAccountAction(
-      "注销账号",
-      () => requireBridge().deleteAccount(
-        deleteConfirmAccount,
-        deleteConfirmDestroy,
-        deleteConfirmWaiveRights,
-        deleteReason
-      ),
-      "账号已注销。"
-    );
-    if (ok) {
-      setDeleteConfirmAccount("");
-      setDeleteConfirmDestroy("");
-      setDeleteConfirmWaiveRights("");
-      setDeleteReason("");
-    }
-  }
-
-  return (
-    <div className="settings-stack">
-      <div className="settings-card">
-        <div className="account-summary-row">
-          <ShieldCheck size={34} />
-          <div>
-            <b>{accountTitle}</b>
-            <span>{statusText}</span>
-          </div>
-          <button type="button" onClick={onOpenAccountDialog}>{account.status === "authenticated" ? "管理账号" : "登录"}</button>
-          <button
-            type="button"
-            disabled={account.status !== "authenticated" || Boolean(accountAction)}
-            onClick={() => void runAccountAction("退出登录", () => requireBridge().logout(), "已退出登录。")}
-          >
-            退出登录
-          </button>
-        </div>
-        {accountMessage ? <p className={`account-message ${accountMessage.kind}`}>{accountMessage.text}</p> : null}
-        {accountAction ? <p className="settings-hint">正在执行：{accountAction}</p> : null}
-        <div className="settings-grid">
-          <SettingsPanel title="注销账号" subtitle="注销会删除远程账号主数据，操作不可恢复。">
-            <input className="settings-input" placeholder="输入：我确认注销账号" value={deleteConfirmAccount} onChange={(event) => setDeleteConfirmAccount(event.currentTarget.value)} />
-            <input className="settings-input" placeholder="输入：确认销毁" value={deleteConfirmDestroy} onChange={(event) => setDeleteConfirmDestroy(event.currentTarget.value)} />
-            <input className="settings-input" placeholder="输入：确认放弃电脑端服务权益" value={deleteConfirmWaiveRights} onChange={(event) => setDeleteConfirmWaiveRights(event.currentTarget.value)} />
-            <input className="settings-input" placeholder="注销原因（选填）" value={deleteReason} onChange={(event) => setDeleteReason(event.currentTarget.value)} />
-            <button className="settings-danger-button" type="button" disabled={!canDeleteAccount} onClick={() => void deleteAccount()}>确认注销账号</button>
-          </SettingsPanel>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -621,83 +503,11 @@ function SecretEditor({ field, label, profile }: { field: SecretField; label: st
   );
 }
 
-function RemoteChatSettings({ onOpenAccountDialog }: { onOpenAccountDialog?: () => void }) {
-  const account = useAccountRemoteStore((state) => state.account);
-  const device = useAccountRemoteStore((state) => state.device);
-  const devices = useAccountRemoteStore((state) => state.devices);
-  const connectionStatus = useAccountRemoteStore((state) => state.connectionStatus);
-  const activeConnection = useAccountRemoteStore((state) => state.activeConnection);
-  const onlineDevices = devices.filter((item) => item.online);
-  const isAuthenticated = account.status === "authenticated";
-  const isConnected = connectionStatus === "connected";
-  const hasActiveSession = Boolean(activeConnection);
-
+function RemoteChatSettings() {
   return (
     <div className="settings-stack">
       <div className="settings-card remote-chat-card">
-        <section className="remote-overview-panel">
-          <div className="device-overview">
-            <div>
-              <h3>手机、Windows、项目会话</h3>
-              <p>管理同账号设备连接、信令通道和出站远程会话。优先局域网直连，不可用时自动降级到跨网通道。</p>
-            </div>
-            <span className={`status-badge ${isConnected ? "active" : ""}`}>
-              {isConnected ? "信令已连接" : "信令未连接"}
-            </span>
-          </div>
-
-          <div className="device-flow">
-            <DeviceNode
-              title="移动端 / 其他桌面"
-              subtitle={isAuthenticated ? `${onlineDevices.length} 个在线` : "等待登录"}
-              active={isAuthenticated && onlineDevices.length > 0}
-            />
-            <span className={`device-rail ${isAuthenticated && isConnected ? "active" : ""}`} />
-            <DeviceNode
-              title={device?.deviceName ?? "本机设备"}
-              subtitle={device?.deviceID ? `设备 #${device.deviceID}` : "未注册"}
-              active={Boolean(device?.deviceID) && isConnected}
-            />
-            <span className={`device-rail ${hasActiveSession ? "active" : ""}`} />
-            <DeviceNode
-              title="远程会话"
-              subtitle={hasActiveSession ? transportSessionLabel(activeConnection) : "等待连接"}
-              active={hasActiveSession}
-            />
-          </div>
-
-          <div className="remote-metric-chips">
-            <MetricChip title="连接方式" value="局域网 / 跨网通道" />
-            <MetricChip title="信令状态" value={sharedConnectionStatusLabel(connectionStatus)} />
-            <MetricChip title="已知设备" value={`${devices.length} 台`} />
-          </div>
-        </section>
-
-        <section className="remote-service-panel">
-          <div className="account-section-header">
-            <div>
-              <h3>连接服务</h3>
-              <p>登录后会自动注册本机并连接信令；也可在下方账号卡片中手动启停。</p>
-            </div>
-          </div>
-          <div className="settings-actions device-settings-actions">
-            <button className="settings-primary-button" type="button" onClick={onOpenAccountDialog}>
-              {isAuthenticated ? "打开账号设备弹窗" : "登录并注册设备"}
-            </button>
-          </div>
-        </section>
-
-        <div className="remote-account-divider" />
-
         <WindowsHostPanel />
-
-        <div className="remote-account-divider" />
-
-        {isAuthenticated ? (
-          <AccountRemoteControlPanel embedded />
-        ) : (
-          <p className="account-empty">登录后会把这台 Windows 注册为可连接设备，并展示同账号远程设备列表。</p>
-        )}
       </div>
     </div>
   );
@@ -707,7 +517,6 @@ function WindowsHostPanel() {
   const [status, setStatus] = useState<RemoteHostStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [tokenVisible, setTokenVisible] = useState(false);
   const bridgeAvailable = Boolean(window.codevoke?.remoteHost);
 
   useEffect(() => {
@@ -764,7 +573,7 @@ function WindowsHostPanel() {
       <div className="toggle-header">
         <div>
           <h3>手机连接本机（局域网直连）</h3>
-          <p>开启后，手机在同一 Wi-Fi 下输入连接口令即可直连这台 Windows，发送消息并实时查看输出。</p>
+          <p>开启后，手机在同一 Wi-Fi 下即可直连这台 Windows，发送消息并实时查看输出，无需口令。</p>
         </div>
         <label className="switch">
           <input
@@ -785,23 +594,6 @@ function WindowsHostPanel() {
 
       {enabled ? (
         <div className="settings-grid">
-          <SettingsPanel title="连接口令" subtitle="手机连接时需要填写；请妥善保管，可随时重置（旧口令立即失效）。">
-            <div className="settings-row">
-              <span>口令</span>
-              <code>{status?.token ? (tokenVisible ? status.token : maskToken(status.token)) : "未生成"}</code>
-            </div>
-            <div className="settings-actions">
-              <button type="button" disabled={!status?.token} onClick={() => setTokenVisible((value) => !value)}>
-                {tokenVisible ? "隐藏" : "显示"}
-              </button>
-              <button type="button" disabled={!status?.token} onClick={() => status?.token && void copyText(status.token, "口令已复制到剪贴板。")}>
-                <Copy size={14} /> 复制
-              </button>
-              <button className="settings-primary-button" type="button" disabled={busy} onClick={() => void runHostAction(() => window.codevoke!.remoteHost.resetToken(), "已重置连接口令，旧口令立即失效。")}>
-                <RefreshCw size={14} /> 重置口令
-              </button>
-            </div>
-          </SettingsPanel>
           <SettingsPanel title="局域网地址" subtitle="手机与本机处于同一 Wi-Fi 时，使用以下地址连接。">
             <div className="settings-row"><span>地址</span><code>{status?.lanAddress ?? "等待网络…"}</code></div>
             <div className="settings-row"><span>端口</span><b>{status?.port ?? "-"}</b></div>
@@ -823,41 +615,11 @@ function WindowsHostPanel() {
   );
 }
 
-function maskToken(token: string): string {
-  if (token.length <= 8) {
-    return "••••••••";
-  }
-  return `${token.slice(0, 4)}••••${token.slice(-4)}`;
-}
-
 function MetricChip({ title, value }: { title: string; value: string }) {
   return (
     <div className="remote-metric-chip">
       <span>{title}</span>
       <b>{value}</b>
-    </div>
-  );
-}
-
-function transportSessionLabel(connection: RemoteConnectResult | null): string {
-  if (!connection) {
-    return "等待连接";
-  }
-  if (connection.transport === "lan") {
-    return `局域网 · ${connection.host}:${connection.port}`;
-  }
-  if (connection.transport === "tunnel") {
-    return `跨网通道 · #${connection.connectionId ?? "?"}`;
-  }
-  return "公网直连";
-}
-
-function DeviceNode({ active, subtitle, title }: { active?: boolean; subtitle: string; title: string }) {
-  return (
-    <div className={`device-node ${active ? "active" : ""}`}>
-      <span>{active ? "在线" : "空闲"}</span>
-      <b>{title}</b>
-      <small>{subtitle}</small>
     </div>
   );
 }
@@ -951,68 +713,12 @@ function GlobalRulesSettings({ settings }: { settings: AppSettings }) {
 function AboutSettings() {
   const appInfo = useSettingsStore((state) => state.appInfo);
   const loadAppInfo = useSettingsStore((state) => state.loadAppInfo);
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updateMessage, setUpdateMessage] = useState("尚未检查");
-  const [updateUrl, setUpdateUrl] = useState("");
-  const [legalDocuments, setLegalDocuments] = useState<Partial<Record<RemoteLegalDocumentType, RemoteLegalDocument>>>({});
-  const [selectedLegalDocument, setSelectedLegalDocument] = useState<RemoteLegalDocument | null>(null);
-  const [legalMessage, setLegalMessage] = useState("协议未加载");
-  const [loadingLegalType, setLoadingLegalType] = useState<RemoteLegalDocumentType | null>(null);
 
   useEffect(() => {
     if (!appInfo) {
       void loadAppInfo();
     }
   }, [appInfo, loadAppInfo]);
-
-  const checkForUpdate = async () => {
-    setCheckingUpdate(true);
-    setUpdateUrl("");
-    setUpdateMessage("正在检查更新...");
-    try {
-      const data = await window.codevoke?.checkAppUpdate(appInfo?.version ?? "0.0.0");
-      if (!data) throw new Error("更新服务不可用");
-      if (data.updateAvailable) {
-        const build = data.latestBuildNumber ? ` (${data.latestBuildNumber})` : "";
-        const force = data.forceUpdate ? "，这是强制更新" : "";
-        setUpdateMessage(`发现新版 ${data.latestVersion}${build}${force}`);
-        setUpdateUrl(data.downloadUrl || data.appStoreUrl);
-      } else {
-        setUpdateMessage("当前已是最新版本");
-      }
-    } catch (error) {
-      setUpdateMessage(error instanceof Error ? error.message : "检查失败");
-    } finally {
-      setCheckingUpdate(false);
-    }
-  };
-
-  const openLegalDocument = async (type: RemoteLegalDocumentType) => {
-    const cached = legalDocuments[type];
-    if (cached) {
-      setSelectedLegalDocument(cached);
-      return;
-    }
-
-    const bridge = window.codevoke?.accountRemote;
-    if (!bridge) {
-      setLegalMessage("协议服务不可用");
-      return;
-    }
-
-    setLoadingLegalType(type);
-    setLegalMessage("正在加载协议...");
-    try {
-      const document = await bridge.legalDocument(type);
-      setLegalDocuments((current) => ({ ...current, [document.type]: document }));
-      setSelectedLegalDocument(document);
-      setLegalMessage("协议已加载");
-    } catch (error) {
-      setLegalMessage(error instanceof Error ? error.message : "协议暂时无法加载");
-    } finally {
-      setLoadingLegalType(null);
-    }
-  };
 
   return (
     <div className="settings-stack">
@@ -1028,27 +734,7 @@ function AboutSettings() {
       <div className="settings-card">
         <div className="settings-row"><span>当前版本</span><b>{appInfo?.version ?? "读取中"}</b></div>
         <div className="settings-row"><span>平台</span><b>{appInfo ? `${appInfo.platform} / ${appInfo.arch}` : "读取中"}</b></div>
-        <div className="settings-row"><span>更新状态</span><span>{updateMessage}</span></div>
-        <button className="settings-primary-button" type="button" disabled={checkingUpdate || !appInfo} onClick={() => void checkForUpdate()}>
-          <RefreshCw size={14} /> {checkingUpdate ? "检查中..." : "检查更新"}
-        </button>
-        {updateUrl ? (
-          <button className="settings-primary-button" type="button" onClick={() => window.open(updateUrl, "_blank", "noopener,noreferrer")}>
-            <ChevronRight size={14} /> 打开下载链接
-          </button>
-        ) : null}
       </div>
-      <div className="settings-card">
-        <div className="settings-row"><span>协议状态</span><span>{legalMessage}</span></div>
-        {legalDocumentLinks.map((item) => (
-          <button className="legal-row" key={item.type} type="button" onClick={() => void openLegalDocument(item.type)} disabled={Boolean(loadingLegalType)}>
-            <FileText size={16} />
-            <span>{loadingLegalType === item.type ? "加载中..." : item.label}</span>
-            <ChevronRight size={14} />
-          </button>
-        ))}
-      </div>
-      {selectedLegalDocument ? <LegalDocumentModal document={selectedLegalDocument} onClose={() => setSelectedLegalDocument(null)} /> : null}
     </div>
   );
 }
@@ -1115,23 +801,6 @@ function secretSummary(profile: CLIProfile): string {
     profile.secretRefs.authToken ? "authToken" : null
   ].filter(Boolean);
   return labels.length > 0 ? labels.join(" / ") : "未配置";
-}
-
-function connectionStatusLabel(status: string): string {
-  switch (status) {
-    case "connected":
-      return "已连接";
-    case "connecting":
-      return "连接中";
-    case "reconnecting":
-      return "重连中";
-    case "error":
-      return "连接异常";
-    case "closed":
-      return "已关闭";
-    default:
-      return "空闲";
-  }
 }
 
 function emptyToUndefined(value: string): string | undefined {

@@ -13,8 +13,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ipcChannels,
-  appUpdateCheckRequestSchema,
-  appUpdateCheckResponseSchema,
   desktopNotificationRequestSchema,
   projectDirectorySchema,
   settingsCLIProbeRequestSchema,
@@ -44,10 +42,6 @@ import { registerEditorIpcHandlers } from "./editor/registerEditorIpc.js";
 import { registerChatIpcHandlers } from "./chat/registerChatIpc.js";
 import { ChatSessionStore } from "./chat/chatSessionStore.js";
 import { AppSettingsService, CLIProfileService, probeCLI } from "./settings/service.js";
-import { AccountClient, AccountSessionStore } from "./account/index.js";
-import { DeviceIdentityStore } from "./device/index.js";
-import { SignalingClient } from "./signaling/index.js";
-import { registerAccountRemoteIpcHandlers } from "./account/registerAccountRemoteIpc.js";
 import { RemoteHostController } from "./remoteHost/RemoteHostController.js";
 import { resolveExistingDirectory } from "./security/pathGuards.js";
 
@@ -62,10 +56,6 @@ const settingsService = new AppSettingsService();
 const fileTreeService = createFileTreeService(projectStore, settingsService);
 const profileService = new CLIProfileService();
 const chatSessionStore = new ChatSessionStore(app.getPath("userData"));
-const accountClient = new AccountClient({ appVersion: app.getVersion() || "0.1.0" });
-const accountSessionStore = new AccountSessionStore();
-const deviceIdentityStore = new DeviceIdentityStore();
-const signalingClient = new SignalingClient();
 
 const remoteHostController = new RemoteHostController({
   userDataDir: app.getPath("userData"),
@@ -80,48 +70,11 @@ const remoteHostController = new RemoteHostController({
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send(ipcChannels.remoteHostStatus, status);
     }
-  },
-  lan: {
-    requireAccessToken: () => accountSessionStore.requireAccessToken(),
-    currentDeviceId: async () => (await deviceIdentityStore.summary()).deviceID,
-    publishLanToken: (deviceId, input, accessToken) =>
-      accountClient.publishLanToken(deviceId, input, accessToken)
-  },
-  tunnel: {
-    signaling: signalingClient,
-    ensureStarted: async () => {
-      try {
-        const summary = await deviceIdentityStore.summary();
-        if (!summary.deviceID) {
-          return;
-        }
-        const status = signalingClient.status;
-        if (status === "connected" || status === "connecting" || status === "reconnecting") {
-          return;
-        }
-        const accessToken = await accountSessionStore.requireAccessToken();
-        signalingClient.start(accessToken, summary.deviceID);
-      } catch {
-        // 未登录 / 无设备：静默；登录后账号子系统会自动拉起信令。
-      }
-    }
-  },
-  webrtc: {
-    signaling: signalingClient,
-    iceServers: async (connectionId: number) => {
-      const accessToken = await accountSessionStore.requireAccessToken();
-      const config = await accountClient.iceServers(connectionId, accessToken);
-      return config.iceServers.map((server) => ({
-        urls: server.urls,
-        username: server.username,
-        credential: server.credential
-      }));
-    }
   }
 });
 
 if (process.platform === "win32") {
-  app.setAppUserModelId("vin.anna.codevoke.windows");
+  app.setAppUserModelId("com.codevoke.windows");
 }
 
 function resolvePreloadPath(): string {
@@ -238,21 +191,6 @@ function registerIpcHandlers(): void {
     platform: process.platform,
     arch: process.arch
   }));
-  ipcMain.handle(ipcChannels.appUpdateCheck, async (_event, rawRequest: unknown) => {
-    const request = appUpdateCheckRequestSchema.parse(rawRequest);
-    const url = new URL("/remote/app-updates/check", "https://acode.anna.vin");
-    url.searchParams.set("platform", "windows");
-    url.searchParams.set("channel", "stable");
-    url.searchParams.set("version", request.version);
-    url.searchParams.set("buildNumber", "");
-    const response = await fetch(url);
-    const envelope = await response.json() as { code?: number; data?: unknown; msg?: string };
-    if (!response.ok || envelope.code !== 0) {
-      throw new Error(envelope.msg || `检查失败（HTTP ${response.status}）`);
-    }
-    return appUpdateCheckResponseSchema.parse(envelope.data ?? {});
-  });
-
   ipcMain.handle(ipcChannels.selectProjectDirectory, async () => {
     const options: OpenDialogOptions = {
       properties: ["openDirectory", "createDirectory"],
@@ -421,8 +359,6 @@ function registerIpcHandlers(): void {
     return remoteHostController.setEnabled(request.enabled);
   });
 
-  ipcMain.handle(ipcChannels.remoteHostResetToken, async () => remoteHostController.resetToken());
-
   ipcMain.handle(ipcChannels.remoteHostPushSnapshot, (_event, rawRequest: unknown) => {
     const request = remoteHostPushSnapshotRequestSchema.parse(rawRequest);
     remoteHostController.ingestSnapshot(request.snapshot);
@@ -435,17 +371,6 @@ function registerIpcHandlers(): void {
 
   registerEditorIpcHandlers({ projectStore, settingsService });
   registerChatIpcHandlers(chatSessionStore, profileService);
-  registerAccountRemoteIpcHandlers({
-    accountClient,
-    accountSessionStore,
-    deviceIdentityStore,
-    signalingClient,
-    publishState: (state) => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.webContents.send(ipcChannels.accountRemoteState, state);
-      }
-    }
-  });
 }
 
 const gotLock = app.requestSingleInstanceLock();

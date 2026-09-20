@@ -71,12 +71,12 @@ describe("RemoteHostServer LAN/pipeline decoupling", () => {
     }
   });
 
-  it("keeps the pipeline running (tunnel/webrtc) even when the LAN port bind fails", async () => {
+  it("keeps the pipeline running (virtual connections) even when the LAN port bind fails", async () => {
     const { server, port } = await listenOnEphemeralPort();
     occupied = server;
 
     const snapshot = buildSnapshot();
-    host = new RemoteHostServer({ port, token: "host-token", bindLAN: false }, buildDelegate(snapshot));
+    host = new RemoteHostServer({ port, bindLAN: false }, buildDelegate(snapshot));
 
     const onError = vi.fn();
     await host.start();
@@ -86,7 +86,7 @@ describe("RemoteHostServer LAN/pipeline decoupling", () => {
     expect(host.isLanListening).toBe(false);
     expect(host.lastErrorMessage).toBeTruthy();
 
-    // 虚拟连接（隧道/WebRTC）仍可用：attach 会回 hello，broadcast 能 fanout。
+    // 虚拟连接仍可用：attach 会回 hello，broadcast 能 fanout。
     const sent: string[] = [];
     const connection = host.attachVirtualConnection({
       send: (text) => sent.push(text),
@@ -106,7 +106,7 @@ describe("RemoteHostServer LAN/pipeline decoupling", () => {
     // free the port immediately, then reuse it for the host
     await new Promise<void>((resolve) => server.close(() => resolve()));
 
-    host = new RemoteHostServer({ port, token: "host-token", bindLAN: false }, buildDelegate(buildSnapshot()));
+    host = new RemoteHostServer({ port, bindLAN: false }, buildDelegate(buildSnapshot()));
     await host.start();
 
     expect(host.isRunning).toBe(true);
@@ -132,7 +132,7 @@ describe("RemoteHostServer attachment upload (recovery frame)", () => {
   async function newHost(): Promise<{ server: RemoteHostServer; port: number }> {
     const { server: probe, port } = await listenOnEphemeralPort();
     await new Promise<void>((resolve) => probe.close(() => resolve()));
-    const server = new RemoteHostServer({ port, token: "host-token", bindLAN: false }, buildDelegate(buildSnapshot()));
+    const server = new RemoteHostServer({ port, bindLAN: false }, buildDelegate(buildSnapshot()));
     await server.start();
     host = server;
     return { server, port };
@@ -212,17 +212,17 @@ describe("RemoteHostServer attachment upload (HTTP POST /attachments)", () => {
   async function startHost(): Promise<void> {
     const { server: probe, port } = await listenOnEphemeralPort();
     await new Promise<void>((resolve) => probe.close(() => resolve()));
-    host = new RemoteHostServer({ port, token: "host-token", bindLAN: false }, buildDelegate(buildSnapshot()));
+    host = new RemoteHostServer({ port, bindLAN: false }, buildDelegate(buildSnapshot()));
     await host.start();
     expect(host.isLanListening).toBe(true);
     baseUrl = `http://127.0.0.1:${port}`;
   }
 
-  it("accepts an authorized upload and returns 201 with the host path", async () => {
+  it("accepts an upload and returns 201 with the host path", async () => {
     await startHost();
     const res = await fetch(`${baseUrl}/attachments`, {
       method: "POST",
-      headers: { Authorization: "Bearer host-token", "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ filename: "doc.txt", contentBase64: base64("file-contents") })
     });
     expect(res.status).toBe(201);
@@ -231,21 +231,11 @@ describe("RemoteHostServer attachment upload (HTTP POST /attachments)", () => {
     expect(body.path).toContain(ATTACHMENT_DIRECTORY_NAME);
   });
 
-  it("rejects an unauthorized upload with 401", async () => {
-    await startHost();
-    const res = await fetch(`${baseUrl}/attachments`, {
-      method: "POST",
-      headers: { Authorization: "Bearer wrong-token", "Content-Type": "application/json" },
-      body: JSON.stringify({ filename: "doc.txt", contentBase64: base64("x") })
-    });
-    expect(res.status).toBe(401);
-  });
-
   it("rejects a disallowed extension with 415", async () => {
     await startHost();
     const res = await fetch(`${baseUrl}/attachments`, {
       method: "POST",
-      headers: { Authorization: "Bearer host-token", "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ filename: "malware.exe", contentBase64: base64("MZ") })
     });
     expect(res.status).toBe(415);

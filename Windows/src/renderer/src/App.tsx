@@ -1,6 +1,5 @@
 import {
   ChevronDown,
-  CircleUserRound,
   Minus,
   Plus,
   Square,
@@ -11,13 +10,11 @@ import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
 import type { ChatSessionRecord } from "@shared/chat";
 import type { FileTreeEntry as ProjectFileTreeEntry } from "@shared/fileTree";
 import type { WindowControlAction } from "@shared/ipc";
-import { AccountRemoteDialog } from "@renderer/src/components/accountRemote";
 import { ChatRuntimePanel } from "@renderer/src/components/chat";
 import { EditorArea } from "@renderer/src/components/editor";
 import { ProjectSidebar } from "@renderer/src/components/sidebar";
 import { SettingsPage as FunctionalSettingsPage } from "@renderer/src/components/settings";
 import { AppLogo } from "@renderer/src/components/AppLogo";
-import { useAccountRemoteStore } from "@renderer/src/stores/accountStore";
 import { useChatStore } from "@renderer/src/stores/chatStore";
 import { useEditorStore } from "@renderer/src/stores/editorStore";
 import { useProjectStore } from "@renderer/src/stores/projectStore";
@@ -56,7 +53,6 @@ function clampChatPaneWidth(width: number, availableWidth: number): number {
 function App() {
   const [mode, setMode] = useState<AppMode>("workbench");
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [accountDialogOpen, setAccountDialogOpen] = useState(false);
 
   useEffect(() => installRemoteHostBridge(), []);
 
@@ -70,20 +66,6 @@ function App() {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
-
-  useEffect(() => {
-    const accountRemote = window.codevoke?.accountRemote;
-    if (!accountRemote) {
-      return;
-    }
-
-    const hydrateRemoteState = useAccountRemoteStore.getState().hydrateRemoteState;
-    const unsubscribe = accountRemote.onState(hydrateRemoteState);
-    void accountRemote.getState().then(hydrateRemoteState).catch((error: unknown) => {
-      useAccountRemoteStore.getState().setConnectionStatus("error", error instanceof Error ? error.message : "账号远程状态加载失败。");
-    });
-    return unsubscribe;
   }, []);
 
   async function chooseProject(): Promise<string | null> {
@@ -131,15 +113,10 @@ function App() {
           historyOpen={historyOpen}
           setHistoryOpen={setHistoryOpen}
           setMode={setMode}
-          onOpenAccountDialog={() => setAccountDialogOpen(true)}
         />
       ) : (
-        <SettingsHost setMode={setMode} onOpenAccountDialog={() => setAccountDialogOpen(true)} />
+        <SettingsHost setMode={setMode} />
       )}
-      <AccountRemoteDialog
-        open={accountDialogOpen}
-        onClose={() => setAccountDialogOpen(false)}
-      />
     </main>
   );
 }
@@ -147,7 +124,6 @@ function App() {
 interface WorkbenchProps {
   chooseProject: () => Promise<string | null>;
   historyOpen: boolean;
-  onOpenAccountDialog: () => void;
   setHistoryOpen: (value: boolean) => void;
   setMode: (mode: AppMode) => void;
 }
@@ -155,18 +131,15 @@ interface WorkbenchProps {
 function Workbench({
   chooseProject,
   historyOpen,
-  onOpenAccountDialog,
   setHistoryOpen,
   setMode
 }: WorkbenchProps) {
   const openFile = useEditorStore((state) => state.openFile);
   const newConversation = useChatStore((state) => state.newConversation);
-  const account = useAccountRemoteStore((state) => state.account);
   const storedProjects = useProjectStore((state) => state.projects);
   const selectedProjectId = useProjectStore((state) => state.selectedProjectId);
   const selectedProject = storedProjects.find((project) => project.id === selectedProjectId) ?? null;
   const projectTitle = selectedProject?.name ?? "选择项目";
-  const accountLabel = account.status === "anonymous" ? "未登录" : account.displayAccount ?? account.userId ?? "已登录";
   const workbenchCardRef = useRef<HTMLElement | null>(null);
   const chatPaneWidthRef = useRef(DEFAULT_CHAT_PANE_WIDTH);
   const [chatPaneWidth, setChatPaneWidth] = useState(readStoredChatPaneWidth);
@@ -333,10 +306,6 @@ function Workbench({
                 </button>
               </div>
               <div className="chat-actions">
-                <button className="account-pill window-no-drag" type="button" onClick={onOpenAccountDialog} aria-label="打开账号与设备">
-                  <CircleUserRound size={15} />
-                  <span>{accountLabel}</span>
-                </button>
                 <button
                   className="new-chat"
                   type="button"
@@ -361,10 +330,10 @@ function Workbench({
   );
 }
 
-function SettingsHost({ onOpenAccountDialog, setMode }: { onOpenAccountDialog: () => void; setMode: (mode: AppMode) => void }) {
+function SettingsHost({ setMode }: { setMode: (mode: AppMode) => void }) {
   return (
     <section className="settings-host">
-      <FunctionalSettingsPage onBack={() => setMode("workbench")} onOpenAccountDialog={onOpenAccountDialog} />
+      <FunctionalSettingsPage onBack={() => setMode("workbench")} />
     </section>
   );
 }

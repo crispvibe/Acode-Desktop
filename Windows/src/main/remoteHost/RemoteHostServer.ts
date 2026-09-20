@@ -2,7 +2,7 @@
 // 的传输 + 广播职责（去掉 legacy/WebRTC 路径，只保留一期需要的 VNC 协议）。
 //
 // 职责（纯传输层，不含面板逻辑）：
-//   1. 起 http(`/health`) + ws(`/chat`) 服务器，token 鉴权。
+//   1. 起 http(`/health`) + ws(`/chat`) 服务器（局域网直连，不鉴权）。
 //   2. 维护每条连接的 focus（focusedSessionId / isResolvingDraftSession）。
 //   3. 把 broadcaster 产出的 PanelStateEnvelope 按 focus fanout 给匹配的连接。
 //   4. 解析手机来的 `command` / `resume` 帧，交给 delegate（RemoteHostController）
@@ -13,7 +13,7 @@
 
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket, type RawData } from "ws";
 
 import {
@@ -64,7 +64,6 @@ export interface RemoteHostServerDelegate {
 
 export interface RemoteHostServerConfig {
   port: number;
-  token: string;
   /** true：绑 0.0.0.0 接受局域网连接；false：只绑 127.0.0.1。 */
   bindLAN: boolean;
 }
@@ -207,29 +206,6 @@ function readRequestBody(req: IncomingMessage, maxBytes: number): Promise<Buffer
   });
 }
 
-function tokensMatch(expected: string, provided: string | null): boolean {
-  if (!expected || provided == null) return false;
-  const expectedBuf = Buffer.from(expected, "utf8");
-  const providedBuf = Buffer.from(provided, "utf8");
-  if (expectedBuf.length !== providedBuf.length) return false;
-  return timingSafeEqual(expectedBuf, providedBuf);
-}
-
-function bearerToken(req: IncomingMessage): string | null {
-  const header = req.headers["authorization"];
-  if (typeof header === "string" && header.startsWith("Bearer ")) {
-    return header.slice("Bearer ".length).trim();
-  }
-  try {
-    const url = new URL(req.url ?? "/", "http://localhost");
-    const queryToken = url.searchParams.get("token");
-    if (queryToken && queryToken.length > 0) return queryToken;
-  } catch {
-    // ignore malformed URL
-  }
-  return null;
-}
-
 function toFrameText(data: RawData): string {
   return typeof data === "string" ? data : data.toString("utf8");
 }
@@ -247,8 +223,6 @@ export class RemoteHostServer {
   private wss: WebSocketServer | null = null;
   private readonly connections = new Set<HostConnection>();
   private readonly wsConnections = new Map<WebSocket, HostConnection>();
-  /** 短期 LAN token → 过期时间(ms)。对应 Mac 多 token 校验，让手机用后端发布的 transientToken 连入。 */
-  private readonly transientTokens = new Map<string, number>();
   private running = false;
   private lanListening = false;
   private lastError: string | null = null;
@@ -279,10 +253,7 @@ export class RemoteHostServer {
 
   async start(): Promise<void> {
     if (this.running) return;
-    if (!this.config.token) {
-      throw new Error("RemoteHostServer 缺少 token，拒绝启动。");
-    }
-    // 管道先就绪：即使 LAN 端口绑定失败，隧道 / WebRTC 仍可经虚拟连接工作。
+    // 管道先就绪：即使 LAN 端口绑定失败，虚拟连接仍可工作。
     this.running = true;
     this.lastError = null;
     await this.startLanListener();
@@ -364,30 +335,6 @@ export class RemoteHostServer {
     this.notifyConnectionsChanged();
   }
 
-  /** 登记一个短期 LAN token（已发布到后端的 transientToken），过期前都可用于鉴权。 */
-  setTransientToken(token: string, expiresAtMs: number): void {
-    if (!token) return;
-    this.pruneTransientTokens();
-    this.transientTokens.set(token, expiresAtMs);
-  }
-
-  private pruneTransientTokens(): void {
-    const now = Date.now();
-    for (const [token, expiresAt] of this.transientTokens) {
-      if (expiresAt <= now) this.transientTokens.delete(token);
-    }
-  }
-
-  private transientTokenValid(provided: string | null): boolean {
-    if (provided == null) return false;
-    this.pruneTransientTokens();
-    const now = Date.now();
-    for (const [token, expiresAt] of this.transientTokens) {
-      if (expiresAt > now && tokensMatch(token, provided)) return true;
-    }
-    return false;
-  }
-
   /** 把 broadcaster 产出的 envelope 按 focus fanout。供 RemoteHostController 调用。 */
   broadcast(envelope: PanelStateEnvelope): void {
     if (this.connections.size === 0) return;
@@ -444,15 +391,10 @@ export class RemoteHostServer {
     res.end(JSON.stringify(body));
   }
 
-  /** HTTP 附件直传（LAN 直连）：鉴权 → 读体（限流）→ 落盘 → 回 201 {filename, path}。对齐 Mac `POST /attachments`。 */
+  /** HTTP 附件直传（LAN 直连）：读体（限流）→ 落盘 → 回 201 {filename, path}。对齐 Mac `POST /attachments`。 */
   private async handleAttachmentUpload(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (req.method !== "POST") {
       this.writeJson(res, 405, { error: "method_not_allowed", message: "当前请求方式不支持。" });
-      return;
-    }
-    const provided = bearerToken(req);
-    if (!tokensMatch(this.config.token, provided) && !this.transientTokenValid(provided)) {
-      this.writeJson(res, 401, { error: "unauthorized", message: "连接凭证无效，请重新连接。" });
       return;
     }
 
@@ -493,11 +435,6 @@ export class RemoteHostServer {
     const pathname = requestPathname(req);
     if (pathname !== "/chat") {
       this.rejectUpgrade(socket, 404, "Not Found");
-      return;
-    }
-    const provided = bearerToken(req);
-    if (!tokensMatch(this.config.token, provided) && !this.transientTokenValid(provided)) {
-      this.rejectUpgrade(socket, 401, "Unauthorized");
       return;
     }
     const wss = this.wss;

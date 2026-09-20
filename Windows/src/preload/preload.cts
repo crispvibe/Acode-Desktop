@@ -1,20 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
-  AccountRemoteDeviceUpdateInput,
-  AccountRemoteState,
-  AccountRemoteBridge,
-  AccountVerificationCodeResponse,
-  AccountSessionSummary,
-  DeviceCodeSummary,
-  DeviceSummary,
-  RemoteConnectResult,
-  RemoteDevice,
-  RemoteLegalDocument,
-  RemoteLegalDocumentType
-} from "../shared/account";
-import type {
   AppInfo,
-  AppUpdateCheckResponse,
   DesktopNotificationRequest,
   ProjectDirectorySelection,
   RemoteHostApplyCommandRequest,
@@ -59,7 +45,6 @@ import type {
 
 const ipcChannels = {
   appInfo: "app:info",
-  appUpdateCheck: "app:update-check",
   selectProjectDirectory: "project:select-directory",
   windowControl: "window:control",
   projectList: "project:list",
@@ -85,24 +70,6 @@ const ipcChannels = {
   settingsCLIProbe: "settings:cli:probe",
   settingsAuthorizedFolderAdd: "settings:authorized-folder:add",
   settingsAuthorizedFolderRemove: "settings:authorized-folder:remove",
-  accountRemoteGetState: "account-remote:get-state",
-  accountRemoteRegisterCode: "account-remote:register-code",
-  accountRemoteRegister: "account-remote:register",
-  accountRemoteLoginCode: "account-remote:login-code",
-  accountRemoteLogin: "account-remote:login",
-  accountRemoteLogout: "account-remote:logout",
-  accountRemoteDeleteAccount: "account-remote:delete-account",
-  accountRemoteRefreshDevices: "account-remote:refresh-devices",
-  accountRemoteRegisterDevice: "account-remote:register-device",
-  accountRemoteUpdateDevice: "account-remote:update-device",
-  accountRemoteRefreshDeviceCode: "account-remote:refresh-device-code",
-  accountRemoteResetDeviceCode: "account-remote:reset-device-code",
-  accountRemoteLegalDocument: "account-remote:legal-document",
-  accountRemoteLegalConsent: "account-remote:legal-consent",
-  accountRemoteStartSignaling: "account-remote:start-signaling",
-  accountRemoteStopSignaling: "account-remote:stop-signaling",
-  accountRemoteConnectDevice: "account-remote:connect-device",
-  accountRemoteState: "account-remote:state",
   chatStart: "chat:start",
   chatInterrupt: "chat:interrupt",
   chatPermissionResponse: "chat:permission-response",
@@ -115,7 +82,6 @@ const ipcChannels = {
   desktopNotificationShow: "desktop-notification:show",
   remoteHostGetStatus: "remote-host:get-status",
   remoteHostSetEnabled: "remote-host:set-enabled",
-  remoteHostResetToken: "remote-host:reset-token",
   remoteHostPushSnapshot: "remote-host:push-snapshot",
   remoteHostApplyCommand: "remote-host:apply-command",
   remoteHostCommandResult: "remote-host:command-result",
@@ -170,59 +136,7 @@ function toChatBackendEventEnvelope(value: unknown): ChatBackendEventEnvelope {
   return envelope as unknown as ChatBackendEventEnvelope;
 }
 
-function toAccountRemoteState(value: unknown): AccountRemoteState {
-  if (!value || typeof value !== "object") {
-    throw new Error("Invalid account remote state");
-  }
-  const state = value as {
-    account?: AccountSessionSummary;
-    device?: DeviceSummary | null;
-    deviceCode?: DeviceCodeSummary;
-    devices?: RemoteDevice[];
-    signaling?: AccountRemoteState["signaling"];
-  };
-  if (!state.account || !state.signaling || !state.deviceCode || !Array.isArray(state.devices)) {
-    throw new Error("Invalid account remote state");
-  }
-  return state as AccountRemoteState;
-}
-
-function toVerificationCodeResponse(value: unknown): AccountVerificationCodeResponse {
-  if (!value || typeof value !== "object") {
-    throw new Error("Invalid verification code response");
-  }
-  return value as AccountVerificationCodeResponse;
-}
-
-function toRemoteConnectResult(value: unknown): RemoteConnectResult {
-  if (!value || typeof value !== "object") {
-    throw new Error("Invalid remote connect result");
-  }
-  const result = value as Record<string, unknown>;
-  if (typeof result.transport !== "string" || typeof result.token !== "string") {
-    throw new Error("Invalid remote connect result");
-  }
-  return value as RemoteConnectResult;
-}
-
-function toRemoteLegalDocument(value: unknown): RemoteLegalDocument {
-  if (!value || typeof value !== "object") {
-    throw new Error("Invalid legal document response");
-  }
-  const document = value as Record<string, unknown>;
-  if (
-    typeof document.id !== "number"
-    || typeof document.type !== "string"
-    || typeof document.title !== "string"
-    || typeof document.content !== "string"
-  ) {
-    throw new Error("Invalid legal document response");
-  }
-  return value as RemoteLegalDocument;
-}
-
 const chatEventListeners = new Set<(event: ChatBackendEventEnvelope) => void>();
-const accountRemoteStateListeners = new Set<(state: AccountRemoteState) => void>();
 const remoteHostStatusListeners = new Set<(status: RemoteHostStatus) => void>();
 const remoteHostApplyCommandListeners = new Set<(payload: RemoteHostApplyCommandRequest) => void>();
 
@@ -241,9 +155,6 @@ ipcRenderer.on(ipcChannels.chatEvent, (_event, rawEnvelope: unknown) => {
 const api = {
   async getAppInfo(): Promise<AppInfo> {
     return toAppInfo(await ipcRenderer.invoke(ipcChannels.appInfo));
-  },
-  async checkAppUpdate(version: string): Promise<AppUpdateCheckResponse> {
-    return ipcRenderer.invoke(ipcChannels.appUpdateCheck, { version }) as Promise<AppUpdateCheckResponse>;
   },
   async selectProjectDirectory(): Promise<ProjectDirectorySelection> {
     return toProjectDirectorySelection(await ipcRenderer.invoke(ipcChannels.selectProjectDirectory));
@@ -331,70 +242,6 @@ const api = {
       return ipcRenderer.invoke(ipcChannels.settingsAuthorizedFolderRemove, { folderId }) as Promise<AppSettings>;
     }
   },
-  accountRemote: {
-    async getState(): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteGetState));
-    },
-    async requestRegisterCode(email: string): Promise<AccountVerificationCodeResponse> {
-      return toVerificationCodeResponse(await ipcRenderer.invoke(ipcChannels.accountRemoteRegisterCode, { email }));
-    },
-    async register(email: string, verificationCode: string): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteRegister, { email, verificationCode }));
-    },
-    async requestLoginCode(email: string): Promise<AccountVerificationCodeResponse> {
-      return toVerificationCodeResponse(await ipcRenderer.invoke(ipcChannels.accountRemoteLoginCode, { email }));
-    },
-    async login(email: string, verificationCode: string): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteLogin, { email, verificationCode }));
-    },
-    async logout(): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteLogout));
-    },
-    async deleteAccount(confirmAccount: string, confirmDestroy: string, confirmWaiveRights: string, reason: string): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteDeleteAccount, {
-        confirmAccount,
-        confirmDestroy,
-        confirmWaiveRights,
-        reason
-      }));
-    },
-    async refreshDevices(): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteRefreshDevices));
-    },
-    async registerDevice(): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteRegisterDevice));
-    },
-    async updateDevice(input: AccountRemoteDeviceUpdateInput): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteUpdateDevice, input));
-    },
-    async refreshDeviceCode(): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteRefreshDeviceCode));
-    },
-    async resetDeviceCode(): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteResetDeviceCode));
-    },
-    async legalDocument(type: RemoteLegalDocumentType): Promise<RemoteLegalDocument> {
-      return toRemoteLegalDocument(await ipcRenderer.invoke(ipcChannels.accountRemoteLegalDocument, { type }));
-    },
-    async consentLegal(documentId: number): Promise<boolean> {
-      return ipcRenderer.invoke(ipcChannels.accountRemoteLegalConsent, { documentId }) as Promise<boolean>;
-    },
-    async startSignaling(): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteStartSignaling));
-    },
-    async stopSignaling(): Promise<AccountRemoteState> {
-      return toAccountRemoteState(await ipcRenderer.invoke(ipcChannels.accountRemoteStopSignaling));
-    },
-    async connectDevice(deviceId: number): Promise<RemoteConnectResult> {
-      return toRemoteConnectResult(await ipcRenderer.invoke(ipcChannels.accountRemoteConnectDevice, { deviceId }));
-    },
-    onState(listener: (state: AccountRemoteState) => void): () => void {
-      accountRemoteStateListeners.add(listener);
-      return () => {
-        accountRemoteStateListeners.delete(listener);
-      };
-    }
-  } satisfies AccountRemoteBridge,
   chat: {
     async start(request: ChatStartRequest): Promise<{ runID: string }> {
       return ipcRenderer.invoke(ipcChannels.chatStart, request) as Promise<{ runID: string }>;
@@ -434,9 +281,6 @@ const api = {
     async setEnabled(enabled: boolean): Promise<RemoteHostStatus> {
       return ipcRenderer.invoke(ipcChannels.remoteHostSetEnabled, { enabled }) as Promise<RemoteHostStatus>;
     },
-    async resetToken(): Promise<RemoteHostStatus> {
-      return ipcRenderer.invoke(ipcChannels.remoteHostResetToken) as Promise<RemoteHostStatus>;
-    },
     async pushSnapshot(snapshot: PanelStateSnapshot): Promise<void> {
       await ipcRenderer.invoke(ipcChannels.remoteHostPushSnapshot, { snapshot });
     },
@@ -457,18 +301,6 @@ const api = {
     }
   } satisfies RemoteHostBridge
 };
-
-ipcRenderer.on(ipcChannels.accountRemoteState, (_event, rawState: unknown) => {
-  let state: AccountRemoteState;
-  try {
-    state = toAccountRemoteState(rawState);
-  } catch {
-    return;
-  }
-  for (const listener of accountRemoteStateListeners) {
-    listener(state);
-  }
-});
 
 ipcRenderer.on(ipcChannels.remoteHostStatus, (_event, rawStatus: unknown) => {
   if (!rawStatus || typeof rawStatus !== "object") {

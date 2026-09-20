@@ -1,11 +1,9 @@
 import { z } from "zod";
-import { accountRemoteDeviceUpdateInputSchema, remoteLegalDocumentTypeSchema } from "./account.js";
 import { secretFieldSchema } from "./settings.js";
 import { commandAckSchema, commandSchema, panelStateSnapshotSchema, type PanelStateSnapshot } from "./remoteProtocol.js";
 
 export const ipcChannels = {
   appInfo: "app:info",
-  appUpdateCheck: "app:update-check",
   selectProjectDirectory: "project:select-directory",
   windowControl: "window:control",
   projectList: "project:list",
@@ -27,24 +25,6 @@ export const ipcChannels = {
   settingsCLIProbe: "settings:cli:probe",
   settingsAuthorizedFolderAdd: "settings:authorized-folder:add",
   settingsAuthorizedFolderRemove: "settings:authorized-folder:remove",
-  accountRemoteGetState: "account-remote:get-state",
-  accountRemoteRegisterCode: "account-remote:register-code",
-  accountRemoteRegister: "account-remote:register",
-  accountRemoteLoginCode: "account-remote:login-code",
-  accountRemoteLogin: "account-remote:login",
-  accountRemoteLogout: "account-remote:logout",
-  accountRemoteDeleteAccount: "account-remote:delete-account",
-  accountRemoteRefreshDevices: "account-remote:refresh-devices",
-  accountRemoteRegisterDevice: "account-remote:register-device",
-  accountRemoteUpdateDevice: "account-remote:update-device",
-  accountRemoteRefreshDeviceCode: "account-remote:refresh-device-code",
-  accountRemoteResetDeviceCode: "account-remote:reset-device-code",
-  accountRemoteLegalDocument: "account-remote:legal-document",
-  accountRemoteLegalConsent: "account-remote:legal-consent",
-  accountRemoteStartSignaling: "account-remote:start-signaling",
-  accountRemoteStopSignaling: "account-remote:stop-signaling",
-  accountRemoteConnectDevice: "account-remote:connect-device",
-  accountRemoteState: "account-remote:state",
   chatStart: "chat:start",
   chatInterrupt: "chat:interrupt",
   chatPermissionResponse: "chat:permission-response",
@@ -58,7 +38,6 @@ export const ipcChannels = {
   // 远程 host（手机连 Windows）相关
   remoteHostGetStatus: "remote-host:get-status",
   remoteHostSetEnabled: "remote-host:set-enabled",
-  remoteHostResetToken: "remote-host:reset-token",
   remoteHostPushSnapshot: "remote-host:push-snapshot",
   remoteHostApplyCommand: "remote-host:apply-command",
   remoteHostCommandResult: "remote-host:command-result",
@@ -79,24 +58,6 @@ export const desktopNotificationRequestSchema = z.object({
 });
 
 export type DesktopNotificationRequest = z.infer<typeof desktopNotificationRequestSchema>;
-
-export const appUpdateCheckRequestSchema = z.object({
-  version: z.string().default("0.0.0")
-});
-
-export const appUpdateCheckResponseSchema = z.object({
-  updateAvailable: z.boolean().default(false),
-  latestVersion: z.string().default(""),
-  latestBuildNumber: z.string().default(""),
-  releaseNotes: z.string().default(""),
-  updateType: z.string().default("link"),
-  downloadUrl: z.string().default(""),
-  appStoreUrl: z.string().default(""),
-  forceUpdate: z.boolean().default(false)
-});
-
-export type AppUpdateCheckRequest = z.infer<typeof appUpdateCheckRequestSchema>;
-export type AppUpdateCheckResponse = z.infer<typeof appUpdateCheckResponseSchema>;
 
 export const projectDirectorySchema = z.object({
   canceled: z.boolean(),
@@ -138,54 +99,12 @@ export const settingsAuthorizedFolderRemoveRequestSchema = z.object({
   folderId: z.string().min(1)
 });
 
-export const accountRemoteLoginRequestSchema = z.object({
-  email: z.string().min(1),
-  verificationCode: z.string().min(1)
-});
-
-export const accountRemoteEmailRequestSchema = z.object({
-  email: z.string().min(1)
-});
-
-export const accountRemoteRegisterRequestSchema = z.object({
-  email: z.string().min(1),
-  verificationCode: z.string().min(1)
-});
-
-export const accountRemoteDeleteAccountRequestSchema = z.object({
-  confirmAccount: z.string().min(1),
-  confirmDestroy: z.string().min(1),
-  confirmWaiveRights: z.string().min(1),
-  reason: z.string().default("")
-});
-
-export const accountRemoteLegalDocumentRequestSchema = z.object({
-  type: remoteLegalDocumentTypeSchema
-});
-
-export const accountRemoteLegalConsentRequestSchema = z.object({
-  documentId: z.number().int().positive()
-});
-
-export const accountRemoteDeviceUpdateRequestSchema = accountRemoteDeviceUpdateInputSchema;
-
-export const accountRemoteConnectDeviceRequestSchema = z.object({
-  deviceId: z.number().int().positive()
-});
-
 export type SettingsProfileUpdateRequest = z.infer<typeof settingsProfileUpdateRequestSchema>;
 export type SettingsProfileIdRequest = z.infer<typeof settingsProfileIdRequestSchema>;
 export type SettingsProfileSecretSetRequest = z.infer<typeof settingsProfileSecretSetRequestSchema>;
 export type SettingsProfileSecretClearRequest = z.infer<typeof settingsProfileSecretClearRequestSchema>;
 export type SettingsCLIProbeRequest = z.infer<typeof settingsCLIProbeRequestSchema>;
 export type SettingsAuthorizedFolderRemoveRequest = z.infer<typeof settingsAuthorizedFolderRemoveRequestSchema>;
-export type AccountRemoteLoginRequest = z.infer<typeof accountRemoteLoginRequestSchema>;
-export type AccountRemoteEmailRequest = z.infer<typeof accountRemoteEmailRequestSchema>;
-export type AccountRemoteRegisterRequest = z.infer<typeof accountRemoteRegisterRequestSchema>;
-export type AccountRemoteDeleteAccountRequest = z.infer<typeof accountRemoteDeleteAccountRequestSchema>;
-export type AccountRemoteLegalDocumentRequest = z.infer<typeof accountRemoteLegalDocumentRequestSchema>;
-export type AccountRemoteLegalConsentRequest = z.infer<typeof accountRemoteLegalConsentRequestSchema>;
-export type AccountRemoteDeviceUpdateRequest = z.infer<typeof accountRemoteDeviceUpdateRequestSchema>;
 
 // ---- 远程 host（手机连 Windows）IPC 负载 ----
 
@@ -194,7 +113,6 @@ export const remoteHostStatusSchema = z.object({
   enabled: z.boolean(),
   running: z.boolean(),
   port: z.number().int().nonnegative(),
-  token: z.string(),
   lanAddress: z.string().nullable(),
   activeConnectionCount: z.number().int().nonnegative(),
   lastError: z.string().nullable()
@@ -240,7 +158,6 @@ export type RemoteHostCommandResult = z.infer<typeof remoteHostCommandResultSche
 export interface RemoteHostBridge {
   getStatus: () => Promise<RemoteHostStatus>;
   setEnabled: (enabled: boolean) => Promise<RemoteHostStatus>;
-  resetToken: () => Promise<RemoteHostStatus>;
   pushSnapshot: (snapshot: PanelStateSnapshot) => Promise<void>;
   sendCommandResult: (result: RemoteHostCommandResult) => Promise<void>;
   onStatus: (listener: (status: RemoteHostStatus) => void) => () => void;

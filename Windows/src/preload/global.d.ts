@@ -1,12 +1,10 @@
 import type {
   AppInfo,
-  AppUpdateCheckResponse,
   DesktopNotificationRequest,
   ProjectDirectorySelection,
   RemoteHostBridge,
   WindowControlAction
 } from "../shared/ipc";
-import type { AccountRemoteBridge } from "../shared/account";
 import type { ProjectBridge } from "../shared/project";
 import type { FileTreeBridge } from "../shared/fileTree";
 import type {
@@ -31,7 +29,6 @@ declare global {
   interface Window {
     codevoke?: {
       getAppInfo: () => Promise<AppInfo>;
-      checkAppUpdate: (version: string) => Promise<AppUpdateCheckResponse>;
       selectProjectDirectory: () => Promise<ProjectDirectorySelection>;
       windowControl: (action: WindowControlAction) => Promise<void>;
       showDesktopNotification: (request: DesktopNotificationRequest) => Promise<boolean>;
@@ -58,7 +55,6 @@ declare global {
         addAuthorizedFolder: () => Promise<AppSettings>;
         removeAuthorizedFolder: (folderId: string) => Promise<AppSettings>;
       };
-      accountRemote: AccountRemoteBridge;
       chat: ChatBridge;
       remoteHost: RemoteHostBridge;
     };
