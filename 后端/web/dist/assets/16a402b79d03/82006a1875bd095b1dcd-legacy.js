@@ -1,1 +1,0 @@
-System.register(["./770675e8b664223455a6-legacy.js","./2b5209aff2ec0524aa7a-legacy.js"],function(e,t){"use strict";var n,a,r;return{setters:[function(e){n=e.aK,a=e.y,r=e.D},null],execute:function(){e("default",Object.assign({name:"RouteRefreshBridge"},{__name:"reload",setup:function(e){return n().go(-1),function(e,t){return a(),r("div")}}}))}}});

@@ -1,1 +1,0 @@
-import{_ as r}from"./60e8d872940f5f558486.js";import{y as s,D as a}from"./761933e446300f4bd084.js";import"./af016f433cd4ca6304af.js";const f={class:"grid grid-cols-2 gap-2"};const o=r({},[["render",function(r,o){return s(),a("div",f)}]]);export{o as default};

@@ -1,1 +1,0 @@
-import{s}from"./6b2ba951e4b2f0a71e5b.js";const t=t=>s({url:"/role-buttons/bindings",method:"post",data:t}),o=t=>s({url:"/role-buttons/bindings/update",method:"post",data:t}),a=t=>s({url:"/role-buttons/bindings/removal-check",method:"post",params:t});export{a as c,t as g,o as s};

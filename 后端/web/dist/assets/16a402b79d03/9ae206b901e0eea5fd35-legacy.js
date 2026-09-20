@@ -1,1 +1,0 @@
-System.register(["./96d71956fcf50119d732-legacy.js"],function(t,e){"use strict";var c;return{setters:[function(t){c=t.s}],execute:function(){t("g",function(){return c({url:"/security/captcha-config",method:"get"})}),t("u",function(t){return c({url:"/security/captcha-config",method:"put",data:t})})}}});

@@ -1,1 +1,0 @@
-import{aK as a,y as e,D as s}from"./761933e446300f4bd084.js";import"./af016f433cd4ca6304af.js";const o=Object.assign({name:"RouteRefreshBridge"},{__name:"reload",setup:o=>(a().go(-1),(a,o)=>(e(),s("div")))});export{o as default};

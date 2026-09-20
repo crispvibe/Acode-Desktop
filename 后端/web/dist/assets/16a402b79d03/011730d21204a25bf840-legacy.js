@@ -1,1 +1,0 @@
-System.register(["./51a3f5d918a197127365-legacy.js","./770675e8b664223455a6-legacy.js","./2b5209aff2ec0524aa7a-legacy.js"],function(e,a){"use strict";var t,n,r;return{setters:[function(e){t=e._},function(e){n=e.y,r=e.D},null],execute:function(){var a={class:"grid grid-cols-2 gap-2"};e("default",t({},[["render",function(e,t){return n(),r("div",a)}]]))}}});

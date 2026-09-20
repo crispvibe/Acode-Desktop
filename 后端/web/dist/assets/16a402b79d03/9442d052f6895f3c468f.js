@@ -1,1 +1,0 @@
-import{s as t}from"./6b2ba951e4b2f0a71e5b.js";const a=a=>t({url:"/attachments/getFileList",method:"post",data:a}),e=a=>t({url:"/attachments/deleteFile",method:"post",data:a}),s=a=>t({url:"/attachments/editFileName",method:"post",data:a}),o=(a,e={})=>t({url:"/attachments/upload",method:"post",data:a,params:e});export{e as d,s as e,a as g,o as u};

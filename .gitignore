@@ -13,3 +13,12 @@ AcodeIOS/build-archive/
 CodevokeIOS/build-archive/
 CodevokeIOS/build/
 build-archive/
+
+# JS dependencies and build output
+node_modules/
+dist/
+
+# Go
+后端/
+*.exe
+*.log
