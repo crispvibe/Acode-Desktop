@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  cliLaunchEnvFor,
   cliProfileCreateInputSchema,
   cliProfileSchema,
   cliProfileUpdateInputSchema,
@@ -55,22 +56,21 @@ export class CLIProfileService {
     }
 
     const baseUrl = trimToUndefined(profile.baseUrl);
-    if (baseUrl && profile.kind === "claude" && !env.ANTHROPIC_BASE_URL) {
-      env.ANTHROPIC_BASE_URL = baseUrl;
-    }
-    if (baseUrl && profile.kind === "codex" && !env.OPENAI_BASE_URL) {
-      env.OPENAI_BASE_URL = baseUrl;
+    const envNames = cliLaunchEnvFor(profile.kind);
+    if (baseUrl && envNames.baseURLEnv && !env[envNames.baseURLEnv]) {
+      env[envNames.baseURLEnv] = baseUrl;
     }
 
-    if (profile.kind === "claude") {
+    if (envNames.authTokenEnv) {
       const authToken = profile.secretRefs.authToken ? await this.secretStore.getSecret(profile.secretRefs.authToken.id) : null;
-      if (authToken && !env.ANTHROPIC_AUTH_TOKEN) {
-        env.ANTHROPIC_AUTH_TOKEN = authToken;
+      if (authToken && !env[envNames.authTokenEnv]) {
+        env[envNames.authTokenEnv] = authToken;
       }
-    } else {
+    }
+    if (envNames.apiKeyEnv) {
       const apiKey = profile.secretRefs.apiKey ? await this.secretStore.getSecret(profile.secretRefs.apiKey.id) : null;
-      if (apiKey && !env.OPENAI_API_KEY) {
-        env.OPENAI_API_KEY = apiKey;
+      if (apiKey && !env[envNames.apiKeyEnv]) {
+        env[envNames.apiKeyEnv] = apiKey;
       }
     }
 

@@ -359,9 +359,11 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// 切 CLI —— 走 server 权威 composerSetCLI。
+    /// cli 是 String 透传字段（host 端可新增取值），这里只拦空串不做白名单。
     func selectCLI(_ cli: String) {
-        guard cli == "claude" || cli == "codex" else { return }
-        sendCommand(Command(op: .composerSetCLI, args: CommandArgs(cli: cli, expectedProjectId: currentExpectedProjectId, expectedSessionId: currentExpectedSessionId)))
+        let trimmed = cli.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return }
+        sendCommand(Command(op: .composerSetCLI, args: CommandArgs(cli: trimmed, expectedProjectId: currentExpectedProjectId, expectedSessionId: currentExpectedSessionId)))
     }
 
     /// Audit C-02: switch permission mode (auto / ask / bypass) via server.

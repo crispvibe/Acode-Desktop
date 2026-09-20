@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -19,10 +20,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowCircleUp
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Computer
+import androidx.compose.material.icons.rounded.ElectricBolt
+import androidx.compose.material.icons.rounded.Flight
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.NearMe
+import androidx.compose.material.icons.rounded.Nightlight
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -30,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -39,8 +51,39 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import com.codevoke.android.data.RemoteCapability
+import com.codevoke.android.ui.components.SectionTitle
 import com.codevoke.android.ui.components.WhiteGlassBackground
 import com.codevoke.android.ui.theme.CodevokeColor
+import java.util.Locale
+
+internal data class CliOption(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+)
+
+// host 端 `cli` 字段是 String 透传；这里放已知 CLI 的展示元数据，
+// host 新增 CLI 后补一行即可。
+internal val cliCatalog = listOf(
+    CliOption("claude", "Claude Code", "Anthropic Claude CLI", Icons.Rounded.AutoAwesome),
+    CliOption("codex", "Codex", "OpenAI Codex CLI", Icons.Rounded.Terminal),
+    CliOption("cursor", "Cursor Agent", "Cursor 编辑器内置 Agent CLI", Icons.Rounded.NearMe),
+    CliOption("gemini", "Gemini", "Google Gemini CLI", Icons.Rounded.Star),
+    CliOption("qwen", "Qwen Code", "阿里通义 Qwen Code CLI", Icons.Rounded.Cloud),
+    CliOption("copilot", "Copilot", "GitHub Copilot CLI", Icons.Rounded.Flight),
+    CliOption("kimi", "Kimi", "Moonshot Kimi CLI", Icons.Rounded.Nightlight),
+    CliOption("agy", "Antigravity", "Google Antigravity CLI", Icons.Rounded.ArrowCircleUp),
+    CliOption("kiro", "Kiro", "AWS Kiro CLI", Icons.Rounded.ElectricBolt),
+)
+
+// CLI id → 展示名；host 新增未收录的 cli 时兜底为首字母大写的原始值，避免空白。
+internal fun cliDisplayName(cli: String): String {
+    val normalized = cli.trim()
+    return cliCatalog.firstOrNull { it.id == normalized }?.title
+        ?: normalized.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+}
 
 @Composable
 fun SettingsScreen(
@@ -48,6 +91,7 @@ fun SettingsScreen(
     selectedCLI: String,
     goBack: () -> Unit,
     openDevices: () -> Unit,
+    openCLI: () -> Unit,
 ) {
     val context = LocalContext.current
     val packageInfo = remember {
@@ -82,7 +126,7 @@ fun SettingsScreen(
                 Column {
                     SettingsMenuRow("远程设备", connectionStatus, Icons.Rounded.Computer, onClick = openDevices)
                     SettingsDivider()
-                    SettingsMenuRow("CLI", if (selectedCLI == "codex") "Codex" else "Claude Code", Icons.Rounded.Code, showChevron = false)
+                    SettingsMenuRow("CLI", cliDisplayName(selectedCLI), Icons.Rounded.Code, onClick = openCLI)
                 }
             }
             SettingsSectionCard {
@@ -174,4 +218,94 @@ private fun SettingsDivider(modifier: Modifier = Modifier) {
         color = Color.Black.copy(alpha = 0.08f),
         thickness = 1.dp,
     )
+}
+
+@Composable
+fun CliScreen(
+    selectedCLI: String,
+    capabilities: List<RemoteCapability>,
+    goBack: () -> Unit,
+    selectCLI: (String) -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
+        WhiteGlassBackground(Modifier.fillMaxSize())
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            TopTitleBar(title = "CLI", goBack = goBack)
+            SettingsSectionCard {
+                Column(
+                    Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    SectionTitle("命令行后端", "选择消息使用的 CLI")
+                    cliCatalog.forEach { option ->
+                        // 与 iOS SettingsCLIPage 对齐：host 下发的 capability
+                        // 标记不可用时禁用行并展示 errorMessage。
+                        val cap = capabilities.firstOrNull { it.cli == option.id }
+                        val unavailable = cap?.executableAvailable == false
+                        CliOptionRow(
+                            title = option.title,
+                            subtitle = if (unavailable) cap?.errorMessage ?: "${option.title} 不可用" else option.subtitle,
+                            icon = option.icon,
+                            selected = selectedCLI == option.id,
+                            enabled = !unavailable,
+                            onClick = { selectCLI(option.id) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CliOptionRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.45f))
+            .border(
+                BorderStroke(1.dp, if (selected) Color.Black.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.6f)),
+                RoundedCornerShape(14.dp),
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .alpha(if (enabled) 1f else 0.5f),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        SettingsPlainIcon(
+            icon = icon,
+            tint = CodevokeColor.Ink.copy(alpha = if (selected) 0.78f else 0.5f),
+            size = 13.dp,
+            frame = 24.dp,
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(title, color = CodevokeColor.Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = CodevokeColor.Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (selected) {
+            Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = null,
+                tint = CodevokeColor.Ink,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
 }

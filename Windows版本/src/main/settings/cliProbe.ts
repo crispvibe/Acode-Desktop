@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { chatCLIDefaultCommands } from "../../shared/chat.js";
 import {
   cliKindSchema,
   cliProbeResultSchema,
@@ -9,14 +10,10 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-const defaultCommands: Record<CLIKind, string> = {
-  claude: "claude",
-  codex: "codex"
-};
-
 export async function probeCLI(rawKind: unknown, command?: string): Promise<CLIProbeResult> {
   const kind = cliKindSchema.parse(rawKind);
-  const targetCommand = command?.trim() || defaultCommands[kind];
+  // npm 全局安装的 CLI 在 Windows 上是 .cmd shim，where.exe 能解析到具体路径。
+  const targetCommand = command?.trim() || chatCLIDefaultCommands[kind];
   const errors: string[] = [];
 
   const resolvedPath = await resolveCommandPath(targetCommand).catch((error: unknown) => {

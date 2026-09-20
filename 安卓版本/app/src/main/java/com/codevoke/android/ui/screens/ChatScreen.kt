@@ -1052,7 +1052,7 @@ private fun ComposerOptionsBar(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OptionRow("CLI", cliOptions.map { it to it }, composer.cli, enabled, setCLI)
+            OptionRow("CLI", cliOptions.map { it to cliDisplayName(it) }, composer.cli, enabled, setCLI)
             OptionRow("权限", permissionModeOptions, composer.permissionMode, enabled, setPermissionMode)
             OptionRow("推理", reasoningEffortOptions, composer.reasoningEffort, enabled, setReasoningEffort)
         }

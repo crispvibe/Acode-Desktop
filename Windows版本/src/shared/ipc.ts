@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { secretFieldSchema } from "./settings.js";
+import { cliKindSchema, secretFieldSchema } from "./settings.js";
 import { commandAckSchema, commandSchema, panelStateSnapshotSchema, type PanelStateSnapshot } from "./remoteProtocol.js";
 
 export const ipcChannels = {
@@ -91,7 +91,7 @@ export const settingsProfileSecretClearRequestSchema = z.object({
 });
 
 export const settingsCLIProbeRequestSchema = z.object({
-  kind: z.enum(["claude", "codex"]),
+  kind: cliKindSchema,
   command: z.string().optional()
 });
 

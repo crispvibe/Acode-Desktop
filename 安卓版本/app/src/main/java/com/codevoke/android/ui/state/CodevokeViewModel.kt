@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
+import com.codevoke.android.data.RemoteCapability
 import com.codevoke.android.data.RemoteChatAttachment
 import com.codevoke.android.data.RemoteChatClient
 import com.codevoke.android.data.RemoteChatConfig
@@ -70,6 +71,7 @@ data class ChatUiState(
     val isRefreshing: Boolean = false,
     val isLoadingFiles: Boolean = false,
     val isUploadingAttachment: Boolean = false,
+    val capabilities: List<RemoteCapability> = emptyList(),
 ) {
     val selectedProject: RemoteProject? get() = projects.firstOrNull { it.id == selectedProjectId } ?: projects.firstOrNull()
     val filteredSessions: List<RemoteSession> get() = selectedProject?.let { project -> sessions.filter { it.projectId == project.id } } ?: sessions
@@ -534,6 +536,7 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             isLoadingHistory = next.isLoadingHistory,
             tokensUsed = next.tokensUsed,
             tokensTotal = next.tokensTotal,
+            capabilities = next.capabilities,
             lastError = null,
         )
         if (chat.config.supportsDirectHttp) viewModelScope.launch { reloadFiles() }

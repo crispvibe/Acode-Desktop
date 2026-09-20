@@ -19,6 +19,7 @@ private enum class CodevokeScreen {
     Devices,
     Chat,
     Settings,
+    CLI,
 }
 
 @Composable
@@ -52,6 +53,7 @@ fun CodevokeApp() {
             CodevokeScreen.Devices,
             CodevokeScreen.Chat -> Unit
             CodevokeScreen.Settings -> navigateBack(if (vm.chat.config.isComplete) CodevokeScreen.Chat else CodevokeScreen.Devices)
+            CodevokeScreen.CLI -> navigateBack(CodevokeScreen.Settings)
         }
     }
 
@@ -70,7 +72,7 @@ fun CodevokeApp() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    BackHandler(enabled = screen == CodevokeScreen.Settings, onBack = ::handleBack)
+    BackHandler(enabled = screen == CodevokeScreen.Settings || screen == CodevokeScreen.CLI, onBack = ::handleBack)
 
     when (screen) {
         CodevokeScreen.Devices -> DeviceListScreen(
@@ -149,6 +151,13 @@ fun CodevokeApp() {
             selectedCLI = vm.chat.composer.cli,
             goBack = { navigateBack(if (vm.chat.config.isComplete) CodevokeScreen.Chat else CodevokeScreen.Devices) },
             openDevices = { navigateTo(CodevokeScreen.Devices) },
+            openCLI = { navigateTo(CodevokeScreen.CLI) },
+        )
+        CodevokeScreen.CLI -> CliScreen(
+            selectedCLI = vm.chat.composer.cli,
+            capabilities = vm.chat.capabilities,
+            goBack = { navigateBack(CodevokeScreen.Settings) },
+            selectCLI = vm::setCLI,
         )
     }
 }

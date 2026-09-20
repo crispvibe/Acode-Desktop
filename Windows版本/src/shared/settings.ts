@@ -1,7 +1,33 @@
 import { z } from "zod";
+import { chatCLIValues, type ChatCLI } from "./chat.js";
 
-export const cliKindSchema = z.enum(["claude", "codex"]);
+/// 与 shared/chat.ts 的 ChatCLI 同源：settings 域的 CLI 列表即 chat 域契约。
+export const cliKindSchema = z.enum(chatCLIValues);
 export type CLIKind = z.infer<typeof cliKindSchema>;
+
+/// 各 CLI 的 base_url / 密钥落到的环境变量名；没有对应概念的平台留空，不伪造注入。
+/// profileService（main）与 chatStore（renderer）共用这张表，保持一致。
+export interface CLILaunchEnvNames {
+  baseURLEnv?: string;
+  apiKeyEnv?: string;
+  authTokenEnv?: string;
+}
+
+const cliLaunchEnvTable: Record<CLIKind, CLILaunchEnvNames> = {
+  claude: { baseURLEnv: "ANTHROPIC_BASE_URL", authTokenEnv: "ANTHROPIC_AUTH_TOKEN" },
+  codex: { baseURLEnv: "OPENAI_BASE_URL", apiKeyEnv: "OPENAI_API_KEY" },
+  cursor: { baseURLEnv: "CURSOR_API_ENDPOINT", apiKeyEnv: "CURSOR_API_KEY" },
+  gemini: { apiKeyEnv: "GEMINI_API_KEY" },
+  qwen: { baseURLEnv: "OPENAI_BASE_URL", apiKeyEnv: "OPENAI_API_KEY" },
+  copilot: { apiKeyEnv: "GH_TOKEN" },
+  kimi: { baseURLEnv: "KIMI_BASE_URL", apiKeyEnv: "KIMI_API_KEY" },
+  agy: {},
+  kiro: { apiKeyEnv: "KIRO_API_KEY" }
+};
+
+export function cliLaunchEnvFor(kind: CLIKind | ChatCLI): CLILaunchEnvNames {
+  return cliLaunchEnvTable[kind] ?? {};
+}
 
 export const permissionModeSchema = z.enum(["default", "plan", "acceptEdits", "bypassPermissions"]);
 export type PermissionMode = z.infer<typeof permissionModeSchema>;
@@ -106,9 +132,18 @@ export const codexCLIProfileSchema = cliProfileBaseSchema.extend({
 
 export type CodexCLIProfile = z.infer<typeof codexCLIProfileSchema>;
 
+/// cursor/gemini/qwen/copilot/kimi/agy/kiro 共用的通用 profile：没有 kind 专属字段，
+/// 靠 base 字段（executablePath/baseUrl/model/env/secretRefs）表达。
+export const genericCLIProfileSchema = cliProfileBaseSchema.extend({
+  kind: z.enum(["cursor", "gemini", "qwen", "copilot", "kimi", "agy", "kiro"])
+});
+
+export type GenericCLIProfile = z.infer<typeof genericCLIProfileSchema>;
+
 export const cliProfileSchema = z.discriminatedUnion("kind", [
   claudeCLIProfileSchema,
-  codexCLIProfileSchema
+  codexCLIProfileSchema,
+  genericCLIProfileSchema
 ]);
 
 export type CLIProfile = z.infer<typeof cliProfileSchema>;

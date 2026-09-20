@@ -64,14 +64,54 @@ export function contextWindowForModel(modelID: string | null | undefined): numbe
   return DEFAULT_CONTEXT_WINDOW;
 }
 
-export type ChatCLI = "claude" | "codex";
+/// 支持的 CLI 契约字符串 —— 必须与 macOS/iOS/Android 端完全一致。
+export const chatCLIValues = [
+  "claude",
+  "codex",
+  "cursor",
+  "gemini",
+  "qwen",
+  "copilot",
+  "kimi",
+  "agy",
+  "kiro"
+] as const;
+
+export type ChatCLI = (typeof chatCLIValues)[number];
 export type ChatPermissionMode = "ask" | "autoEdit" | "fullAccess";
 export type ChatReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
 export type SessionMode = "newSession" | "continueLast" | "resume";
 export type PermissionDecision = "deny" | "allow" | "allowForSession";
 export type ChatMessageAttachmentKind = "file" | "image";
 
-export const chatCLISchema = z.enum(["claude", "codex"]);
+export const chatCLISchema = z.enum(chatCLIValues);
+
+/// 设置页 / CLI 选择器 / 手机端 models 共用的显示名。
+export const chatCLIDisplayNames: Record<ChatCLI, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  cursor: "Cursor Agent",
+  gemini: "Gemini",
+  qwen: "Qwen Code",
+  copilot: "Copilot",
+  kimi: "Kimi",
+  agy: "Antigravity",
+  kiro: "Kiro"
+};
+
+/// cli 字符串 ≠ 二进制名（cursor→cursor-agent、kiro→kiro-cli）。
+/// executablePath 为空时按这里回退，npm 全局安装的 .cmd shim 依赖 PATH 解析。
+export const chatCLIDefaultCommands: Record<ChatCLI, string> = {
+  claude: "claude",
+  codex: "codex",
+  cursor: "cursor-agent",
+  gemini: "gemini",
+  qwen: "qwen",
+  copilot: "copilot",
+  kimi: "kimi",
+  agy: "agy",
+  kiro: "kiro-cli"
+};
 export const chatPermissionModeSchema = z.enum(["ask", "autoEdit", "fullAccess"]);
 export const chatReasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh", "max"]);
 export const sessionModeSchema = z.enum(["newSession", "continueLast", "resume"]);
@@ -183,7 +223,7 @@ export interface ChatSessionSummary {
   id: string;
   title: string;
   projectPath: string | null;
-  cli: "claude" | "codex";
+  cli: ChatCLI;
   status: ChatRunStatus;
   updatedAt: string;
 }

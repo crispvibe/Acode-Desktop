@@ -12,6 +12,12 @@ import type {
   ChatRunOptions,
   ChatStartRequest
 } from "../../shared/chat.js";
+import {
+  createGenericStreamState,
+  genericCLIRunSpec,
+  resolveSpawnTarget,
+  type GenericCLIKind
+} from "./genericCliBackend.js";
 import { readJSONLLines } from "./jsonlReader.js";
 
 type JSONRecord = Record<string, unknown>;
@@ -124,10 +130,13 @@ export class ChatProcessRun {
   async start(): Promise<void> {
     this.emit({ type: "updateStreamingStatus", status: `启动 ${this.request.options.cli}` });
     try {
-      if (this.request.options.cli === "codex") {
+      const cli = this.request.options.cli;
+      if (cli === "codex") {
         await this.startCodex();
-      } else {
+      } else if (cli === "claude") {
         await this.startClaudeWithFallbacks();
+      } else {
+        await this.startGenericCLI(cli);
       }
     } catch (error) {
       this.emitTerminal({
@@ -168,6 +177,12 @@ export class ChatProcessRun {
       }
       this.pendingApprovals.delete(requestID);
       return this.sendCodexResponse(approval.id, this.codexApprovalResult(approval, decision));
+    }
+
+    // 通用 CLI（cursor/gemini/qwen/copilot/kimi/agy/kiro）没有 stdin 权限回执通道，
+    // 权限决策在启动参数里静态给出；收到响应直接返回不支持。
+    if (this.request.options.cli !== "claude") {
+      return false;
     }
 
     // Claude control_response envelope — request_id lives inside `response`, and the
@@ -217,6 +232,11 @@ export class ChatProcessRun {
         result.answer = response.selectedOptionIDs.join(", ");
       }
       return this.sendCodexResponse(pending.id, result);
+    }
+
+    // 通用 CLI 无交互式问答通道。
+    if (this.request.options.cli !== "claude") {
+      return false;
     }
 
     const pending = this.pendingClaudeControls.get(response.requestID);
@@ -278,6 +298,10 @@ export class ChatProcessRun {
       const id = this.sendCodexRequest("compact", {});
       this.pendingCodexRequests.set(String(id), "compact");
       return true;
+    }
+    // 通用 CLI 没有 /compact 之类的会话内压缩指令。
+    if (this.request.options.cli !== "claude") {
+      return false;
     }
     // Claude：以 stream-json 用户消息写入 /compact 斜杠命令。当前 turn 的 result 行
     // 到达时不能关 stdin（claude 是长驻进程，关了就把排队中的压缩干掉了），要等
@@ -520,7 +544,32 @@ export class ChatProcessRun {
     this.finishFromProcessResult(result, "Codex");
   }
 
-  private spawnCLI(command: "claude" | "codex", args: string[]): ChildProcessWithoutNullStreams {
+  /// cursor/gemini/qwen/copilot/kimi/agy/kiro 统一入口：spawn + stdout JSONL/stream-json
+  /// 逐行映射成同一套 ChatBackendEvent（手机端/渲染端按既有格式渲染卡片）。
+  private async startGenericCLI(cli: GenericCLIKind): Promise<void> {
+    const spec = genericCLIRunSpec(cli, this.request.options, this.request.session, this.request.prompt, this.request.attachments);
+    const executablePath = this.request.options.executablePath.trim() || spec.command;
+    // Windows 下 npm 全局 CLI 多为 .cmd shim，直接 spawn 会被 Node 拒绝；解析真实路径
+    // 后 .cmd 走 powershell 单引号 shim（避免 cmd /c 的元字符注入）。
+    const target = await resolveSpawnTarget(executablePath, spec.args);
+    const child = spawn(target.file, target.args, {
+      cwd: this.request.options.workingDirectory?.trim() || this.request.options.projectPath,
+      env: this.processEnvironment(),
+      shell: false,
+      windowsHide: true
+    });
+    this.child = child;
+
+    const state = createGenericStreamState();
+    const result = await this.consumeChildStreams(child, (line) => {
+      for (const event of spec.parseLine(line, state)) {
+        this.emitAndMark(event);
+      }
+    }, spec.displayName);
+    this.finishFromProcessResult(result, spec.displayName);
+  }
+
+  private spawnCLI(command: string, args: string[]): ChildProcessWithoutNullStreams {
     const executablePath = this.request.options.executablePath.trim() || command;
     return spawn(executablePath, args, {
       cwd: this.request.options.workingDirectory?.trim() || this.request.options.projectPath,

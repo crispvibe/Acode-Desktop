@@ -43,7 +43,7 @@ struct SettingsView: View {
                                 }
                                 SettingsDivider()
                                 NavigationLink(value: SettingsRoute.cli) {
-                                    SettingsMenuRow(title: "CLI", subtitle: homeSnapshot.selectedCLI == "claude" ? "Claude Code" : "Codex", icon: "terminal")
+                                    SettingsMenuRow(title: "CLI", subtitle: cliDisplayName(homeSnapshot.selectedCLI), icon: "terminal")
                                 }
                             }
                         }
@@ -301,13 +301,39 @@ private struct SettingsConnectionPage: View {
 }
 
 
+private struct CLICatalogEntry {
+    let id: String
+    let title: String
+    let subtitle: String
+    let icon: String
+}
+
+/// host 端 `cli` 字段是 String 透传；这里放已知 CLI 的展示元数据。
+/// 新 CLI 在 host 加完后这里补一行即可。
+private let cliCatalog: [CLICatalogEntry] = [
+    CLICatalogEntry(id: "claude", title: "Claude Code", subtitle: "Anthropic Claude CLI", icon: "sparkles"),
+    CLICatalogEntry(id: "codex", title: "Codex", subtitle: "OpenAI Codex CLI", icon: "circle.hexagongrid.fill"),
+    CLICatalogEntry(id: "cursor", title: "Cursor Agent", subtitle: "Cursor 编辑器内置 Agent CLI", icon: "cursorarrow.rays"),
+    CLICatalogEntry(id: "gemini", title: "Gemini", subtitle: "Google Gemini CLI", icon: "star.fill"),
+    CLICatalogEntry(id: "qwen", title: "Qwen Code", subtitle: "阿里通义 Qwen Code CLI", icon: "cloud.fill"),
+    CLICatalogEntry(id: "copilot", title: "Copilot", subtitle: "GitHub Copilot CLI", icon: "airplane"),
+    CLICatalogEntry(id: "kimi", title: "Kimi", subtitle: "Moonshot Kimi CLI", icon: "moon.fill"),
+    CLICatalogEntry(id: "agy", title: "Antigravity", subtitle: "Google Antigravity CLI", icon: "arrow.up.circle.fill"),
+    CLICatalogEntry(id: "kiro", title: "Kiro", subtitle: "AWS Kiro CLI", icon: "bolt.circle.fill"),
+]
+
+/// CLI id → 展示名；host 新增未收录的 cli 时兜底为首字母大写的原始值，避免空白。
+private func cliDisplayName(_ cli: String) -> String {
+    let trimmed = cli.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let entry = cliCatalog.first(where: { $0.id == trimmed }) {
+        return entry.title
+    }
+    guard let first = trimmed.first else { return cli }
+    return first.uppercased() + trimmed.dropFirst()
+}
+
 private struct SettingsCLIPage: View {
     @ObservedObject var viewModel: ChatViewModel
-
-    private let cliOptions: [(id: String, title: String, subtitle: String)] = [
-        ("claude", "Claude Code", "Anthropic Claude CLI"),
-        ("codex", "Codex", "OpenAI Codex CLI")
-    ]
 
     var body: some View {
         SettingsPageContainer(title: "CLI") {
@@ -334,7 +360,7 @@ private struct SettingsCLIPage: View {
             SettingsSectionCard {
                 VStack(alignment: .leading, spacing: 10) {
                     SettingsCardTitle("命令行后端", subtitle: "选择消息使用的 CLI")
-                    ForEach(cliOptions, id: \.id) { option in
+                    ForEach(cliCatalog, id: \.id) { option in
                         // Audit C-03: surface capability.errorMessage and
                         // disable the row when the CLI is unavailable.
                         let cap = viewModel.capability(forCLI: option.id)
@@ -344,7 +370,7 @@ private struct SettingsCLIPage: View {
                             title: option.title,
                             subtitle: unavailable
                                 ? (errorMessage ?? L10n.format("%@ 不可用", option.title)) : option.subtitle,
-                            icon: option.id == "claude" ? "sparkles" : "circle.hexagongrid.fill",
+                            icon: option.icon,
                             selected: viewModel.selectedCLI == option.id
                         ) {
                             guard !unavailable else { return }
