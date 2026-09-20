@@ -18,6 +18,9 @@ struct ChatModelOption: Identifiable, Codable, Equatable {
 enum ChatModelReasoningFamily: Equatable {
     case claude
     case gpt
+    /// 非 Claude/GPT 厂商的 CLI（cursor/gemini/qwen/copilot/kimi/agy/kiro 走这里，
+    /// 除非模型名本身能被识别为 claude-/gpt- 前缀）。
+    case other
 }
 
 enum ChatModelCatalog {
@@ -45,7 +48,51 @@ enum ChatModelCatalog {
                 ChatModelOption(id: "gpt-5.2", title: "GPT-5.2", cli: .codex),
                 ChatModelOption(id: "gpt-5.1-codex-mini", title: "GPT-5.1 Codex Mini", cli: .codex)
             ]
-        case .gemini, .custom:
+        case .cursor:
+            return [
+                ChatModelOption(id: "default", title: "Auto（默认）", cli: .cursor),
+                ChatModelOption(id: "composer-1", title: "Composer 1", cli: .cursor),
+                ChatModelOption(id: "composer-2", title: "Composer 2", cli: .cursor),
+                ChatModelOption(id: "sonnet-4.6", title: "Sonnet 4.6", cli: .cursor),
+                ChatModelOption(id: "gpt-5.2", title: "GPT-5.2", cli: .cursor)
+            ]
+        case .gemini:
+            return [
+                ChatModelOption(id: "default", title: "默认", cli: .gemini),
+                ChatModelOption(id: "gemini-3-pro-preview", title: "Gemini 3 Pro Preview", cli: .gemini, contextWindow: 1_000_000),
+                ChatModelOption(id: "gemini-2.5-pro", title: "Gemini 2.5 Pro", cli: .gemini, contextWindow: 1_000_000),
+                ChatModelOption(id: "gemini-2.5-flash", title: "Gemini 2.5 Flash", cli: .gemini, contextWindow: 1_000_000)
+            ]
+        case .qwen:
+            return [
+                ChatModelOption(id: "default", title: "默认", cli: .qwen),
+                ChatModelOption(id: "qwen3-coder-plus", title: "Qwen3 Coder Plus", cli: .qwen, contextWindow: 256_000),
+                ChatModelOption(id: "qwen3-coder-flash", title: "Qwen3 Coder Flash", cli: .qwen, contextWindow: 256_000),
+                ChatModelOption(id: "qwen3-max", title: "Qwen3 Max", cli: .qwen, contextWindow: 256_000)
+            ]
+        case .copilot:
+            return [
+                ChatModelOption(id: "default", title: "默认", cli: .copilot),
+                ChatModelOption(id: "claude-sonnet-4.6", title: "Claude Sonnet 4.6", cli: .copilot),
+                ChatModelOption(id: "claude-opus-4.6", title: "Claude Opus 4.6", cli: .copilot),
+                ChatModelOption(id: "gpt-5.2", title: "GPT-5.2", cli: .copilot)
+            ]
+        case .kimi:
+            return [
+                ChatModelOption(id: "default", title: "默认", cli: .kimi),
+                ChatModelOption(id: "kimi-k2-thinking", title: "Kimi K2 Thinking", cli: .kimi, contextWindow: 256_000),
+                ChatModelOption(id: "kimi-k2", title: "Kimi K2", cli: .kimi, contextWindow: 256_000),
+                ChatModelOption(id: "kimi-latest", title: "Kimi Latest", cli: .kimi)
+            ]
+        case .agy:
+            return [
+                ChatModelOption(id: "default", title: "默认", cli: .agy)
+            ]
+        case .kiro:
+            return [
+                ChatModelOption(id: "default", title: "默认", cli: .kiro)
+            ]
+        case .custom:
             return options(for: .claude)
         }
     }
@@ -64,12 +111,14 @@ enum ChatModelCatalog {
             .lowercased()
         guard !normalized.isEmpty else { return defaultModelID(for: cli) }
         switch cli.visibleValue {
-        case .claude:
+        case .claude, .custom:
             return isKnownGPTModelID(normalized) ? defaultClaudeModelID : id
         case .codex:
             return normalized == defaultClaudeModelID || isKnownClaudeModelID(normalized) ? defaultCodexModelID : id
-        case .gemini, .custom:
-            return compatibleModelID(id, cli: .claude)
+        default:
+            // 第三方 CLI：不做跨厂商模型名改写（copilot 的 claude-*、cursor 的 gpt-*
+            // 都是合法取值），模型 id 原样透传，让 CLI 自己校验。
+            return id
         }
     }
 
@@ -109,7 +158,11 @@ enum ChatModelCatalog {
             return .gpt
         }
 
-        return cli.visibleValue == .codex ? .gpt : .claude
+        switch cli.visibleValue {
+        case .codex: return .gpt
+        case .claude, .custom: return .claude
+        default: return .other
+        }
     }
 
     private static func isKnownClaudeModelID(_ normalized: String) -> Bool {
@@ -188,7 +241,7 @@ enum ChatReasoningEffort: String, CaseIterable, Codable, Identifiable, Equatable
 
     static func options(for cli: CLIType, modelID: String) -> [ChatReasoningEffort] {
         switch ChatModelCatalog.reasoningFamily(for: modelID, cli: cli) {
-        case .claude:
+        case .claude, .other:
             return [.low, .medium, .high, .xhigh, .max]
         case .gpt:
             return [.low, .medium, .high, .xhigh]
@@ -203,7 +256,7 @@ enum ChatReasoningEffort: String, CaseIterable, Codable, Identifiable, Equatable
         switch ChatModelCatalog.reasoningFamily(for: modelID, cli: cli) {
         case .claude:
             return rawValue
-        case .gpt:
+        case .gpt, .other:
             switch self {
             case .low: return "低"
             case .medium: return "中"

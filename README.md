@@ -18,15 +18,15 @@
 - 📱 **手机指挥电脑里的 AI**：发任务、看进度、批权限、回答 AI 的提问，人不在电脑前也能让 AI 继续写代码
 - 🔌 **零配置连接**：同一 Wi-Fi 下自动发现电脑，点击即连；也可以手动输入 `IP:18765`
 - 🛠 **每一步都看得见**：任务清单、读文件、搜索、diff、终端命令、子代理，全部渲染成对应的卡片
-- ⚡ **双引擎**：Claude Code / Codex 随时切换，模型和推理强度在对话里随手调
+- ⚡ **主流 CLI 全接入**：Claude Code、Codex、Cursor Agent、Gemini、Qwen Code、Copilot、Kimi、Antigravity、Kiro——想用哪个切哪个，模型和推理强度在对话里随手调
 - 🔓 **没有账号体系**：不注册、不登录、不过云，打开就完事
 - 🖥 **四端**：macOS / Windows 当电脑端，iOS / Android 当手机端
 
-更多 CLI（cursor-agent、Gemini CLI 等）规划中，欢迎 PR。
+已内置 9 家主流 CLI 适配；还想接别的（Aider、OpenCode、Goose 等）欢迎 PR——host 端加一个适配器即可。
 
 ## 快速开始
 
-**前置要求**：电脑端需安装 Claude Code（`claude`）或 Codex（`codex`）CLI。
+**前置要求**：电脑端装好任意一家 CLI 并登录过：`claude`、`codex`、`cursor-agent`、`gemini`、`qwen`、`copilot`、`kimi`、`agy`、`kiro-cli`。
 
 **电脑端**（任选一个当 host）：
 

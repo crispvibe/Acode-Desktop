@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { chatCLIDefaultCommands } from "../../shared/chat.js";
+import { resolveSpawnTarget } from "../chat/genericCliBackend.js";
 import {
   cliKindSchema,
   cliProbeResultSchema,
@@ -21,18 +22,22 @@ export async function probeCLI(rawKind: unknown, command?: string): Promise<CLIP
     return null;
   });
 
-  const version = await runForText(targetCommand, ["--version"]).catch((error: unknown) => {
+  // 探测阶段优先用 where.exe 解析到的真实路径：Windows 上 .cmd shim 不能直接 execFile，
+  // runForText 内部走 resolveSpawnTarget（.cmd → powershell 单引号 shim）。
+  const commandForRun = resolvedPath ?? targetCommand;
+
+  const version = await runForText(commandForRun, ["--version"]).catch((error: unknown) => {
     errors.push(toErrorMessage("--version", error));
     return null;
   });
 
-  const help = await runForText(targetCommand, ["--help"]).catch((error: unknown) => {
+  const help = await runForText(commandForRun, ["--help"]).catch((error: unknown) => {
     errors.push(toErrorMessage("--help", error));
     return null;
   });
 
   const appServerHelp = kind === "codex"
-    ? await runForText(targetCommand, ["app-server", "--help"]).catch((error: unknown) => {
+    ? await runForText(commandForRun, ["app-server", "--help"]).catch((error: unknown) => {
       errors.push(toErrorMessage("app-server --help", error));
       return null;
     })
@@ -63,7 +68,8 @@ async function resolveCommandPath(command: string): Promise<string | null> {
 }
 
 async function runForText(command: string, args: string[]): Promise<string | null> {
-  const result = await execFileAsync(command, args, {
+  const target = await resolveSpawnTarget(command, args);
+  const result = await execFileAsync(target.file, target.args, {
     timeout: 5000,
     windowsHide: true,
     maxBuffer: 512 * 1024

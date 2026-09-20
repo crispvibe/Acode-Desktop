@@ -35,11 +35,15 @@ final class ChatModelService: ObservableObject {
                 mergedOptions(ChatModelCatalog.options(for: .codex), codexModels, configuredCodexModels, customCodexModels),
                 cli: .codex
             )
-        case .gemini, .custom:
+        case .custom:
             return withConfiguredDefaultTitle(
                 mergedOptions(ChatModelCatalog.options(for: .claude), claudeModels, configuredClaudeModels, customClaudeModels),
                 cli: .claude
             )
+        case .cursor, .gemini, .qwen, .copilot, .kimi, .agy, .kiro:
+            // 第三方 CLI：目录 + 自定义模型桶（复用 claude 桶，与 addCustomModel 的
+            // 既有"非 codex 都入 claude 桶"约定一致）；不混入 claude 直连/relay 拉到的模型。
+            return mergedOptions(ChatModelCatalog.options(for: cli), customClaudeModels)
         }
     }
 
@@ -49,12 +53,13 @@ final class ChatModelService: ObservableObject {
 
     func defaultModelID(for cli: CLIType) -> String {
         switch cli.visibleValue {
-        case .claude:
+        case .claude, .custom:
             configuredClaudeDefaultModelID?.nonEmptyTrimmed ?? ChatModelCatalog.defaultModelID(for: cli)
         case .codex:
             configuredCodexDefaultModelID?.nonEmptyTrimmed ?? ChatModelCatalog.defaultModelID(for: cli)
-        case .gemini, .custom:
-            configuredClaudeDefaultModelID?.nonEmptyTrimmed ?? ChatModelCatalog.defaultModelID(for: cli)
+        default:
+            // 第三方 CLI 没有 relay/configured 模型来源，直接用目录默认项。
+            ChatModelCatalog.defaultModelID(for: cli)
         }
     }
 
@@ -322,7 +327,7 @@ final class ChatModelService: ObservableObject {
         let configured: [ChatModelOption]
         let configuredDefault: String?
         switch visibleCLI {
-        case .claude, .gemini, .custom:
+        case .claude, .custom:
             let info = loadClaudeConfiguredModels()
             configured = info.modelIDs.map { ChatModelOption(id: $0, title: snapshotPrettify($0, cli: .claude), cli: .claude) }
             configuredDefault = info.defaultModelID?.nonEmptyTrimmed
@@ -330,6 +335,9 @@ final class ChatModelService: ObservableObject {
             let id = loadCodexConfiguredModel()
             configured = id.map { [ChatModelOption(id: $0, title: snapshotPrettify($0, cli: .codex), cli: .codex)] } ?? []
             configuredDefault = id?.nonEmptyTrimmed
+        case .cursor, .gemini, .qwen, .copilot, .kimi, .agy, .kiro:
+            configured = []
+            configuredDefault = nil
         }
 
         let merged = snapshotMerge([catalog, configured, custom])

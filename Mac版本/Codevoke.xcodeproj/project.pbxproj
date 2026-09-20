@@ -34,6 +34,7 @@
 		B00000000000000000000024 /* ChatProcessBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000027 /* ChatProcessBackend.swift */; };
 		B00000000000000000000025 /* JSONLStreamReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000028 /* JSONLStreamReader.swift */; };
 		B00000000000000000000026 /* ClaudeCodeProcessBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000029 /* ClaudeCodeProcessBackend.swift */; };
+		B00000000000000000000050 /* StreamJSONProcessBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000050 /* StreamJSONProcessBackend.swift */; };
 		B00000000000000000000027 /* CodexAppServerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000030 /* CodexAppServerBackend.swift */; };
 		B00000000000000000000028 /* ChatSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000031 /* ChatSessionStore.swift */; };
 		B00000000000000000000029 /* ChatCLICapabilityProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000032 /* ChatCLICapabilityProbe.swift */; };
@@ -88,6 +89,7 @@
 		F00000000000000000000027 /* ChatProcessBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatProcessBackend.swift; sourceTree = "<group>"; };
 		F00000000000000000000028 /* JSONLStreamReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONLStreamReader.swift; sourceTree = "<group>"; };
 		F00000000000000000000029 /* ClaudeCodeProcessBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeProcessBackend.swift; sourceTree = "<group>"; };
+		F00000000000000000000050 /* StreamJSONProcessBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamJSONProcessBackend.swift; sourceTree = "<group>"; };
 		F00000000000000000000030 /* CodexAppServerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAppServerBackend.swift; sourceTree = "<group>"; };
 		F00000000000000000000031 /* ChatSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSessionStore.swift; sourceTree = "<group>"; };
 		F00000000000000000000032 /* ChatCLICapabilityProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCLICapabilityProbe.swift; sourceTree = "<group>"; };
@@ -243,6 +245,7 @@
 				F00000000000000000000028 /* JSONLStreamReader.swift */,
 				F00000000000000000000029 /* ClaudeCodeProcessBackend.swift */,
 				F00000000000000000000030 /* CodexAppServerBackend.swift */,
+				F00000000000000000000050 /* StreamJSONProcessBackend.swift */,
 				F00000000000000000000031 /* ChatSessionStore.swift */,
 				F00000000000000000000032 /* ChatCLICapabilityProbe.swift */,
 				F00000000000000000000034 /* ChatModelService.swift */,
@@ -416,6 +419,7 @@
 				B00000000000000000000025 /* JSONLStreamReader.swift in Sources */,
 				B00000000000000000000026 /* ClaudeCodeProcessBackend.swift in Sources */,
 				B00000000000000000000027 /* CodexAppServerBackend.swift in Sources */,
+				B00000000000000000000050 /* StreamJSONProcessBackend.swift in Sources */,
 				B00000000000000000000028 /* ChatSessionStore.swift in Sources */,
 				B00000000000000000000029 /* ChatCLICapabilityProbe.swift in Sources */,
 				B00000000000000000000030 /* SettingsPageView.swift in Sources */,

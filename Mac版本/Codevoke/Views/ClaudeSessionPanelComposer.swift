@@ -1039,11 +1039,27 @@ extension ChatPanelView {
     }
 
     func persistedModelID(for cli: CLIType) -> String {
-        cli.visibleValue == .codex ? appState.settings.selectedCodexModelID : appState.settings.selectedClaudeModelID
+        switch cli.visibleValue {
+        case .codex:
+            return appState.settings.selectedCodexModelID
+        case .claude, .custom:
+            return appState.settings.selectedClaudeModelID
+        default:
+            return appState.settings.selectedModelIDsByCLI[cli.visibleValue.rawValue]?.nonEmptyTrimmed
+                ?? modelService.defaultModelID(for: cli)
+        }
     }
 
     func persistedReasoningEffort(for cli: CLIType) -> ChatReasoningEffort {
-        cli.visibleValue == .codex ? appState.settings.selectedCodexReasoningEffort : appState.settings.selectedClaudeReasoningEffort
+        switch cli.visibleValue {
+        case .codex:
+            return appState.settings.selectedCodexReasoningEffort
+        case .claude, .custom:
+            return appState.settings.selectedClaudeReasoningEffort
+        default:
+            return appState.settings.selectedReasoningEffortsByCLI[cli.visibleValue.rawValue]
+                ?? modelService.defaultReasoningEffort(for: cli)
+        }
     }
 
     func persistChatSelection() {
@@ -1077,9 +1093,29 @@ extension ChatPanelView {
     }
 
     func confirmFullAccessMode() -> Bool {
+        let cli = appState.selectedCLI.visibleValue
+        let detail: String
+        switch cli {
+        case .claude, .custom:
+            detail = "Claude 会使用 bypassPermissions"
+        case .codex:
+            detail = "Codex 会使用 danger-full-access"
+        case .cursor:
+            detail = "Cursor Agent 会使用 --force"
+        case .gemini, .qwen:
+            detail = "\(cli.displayName) 会使用 --approval-mode yolo"
+        case .copilot:
+            detail = "Copilot 会使用 --allow-all-tools"
+        case .kimi:
+            detail = "Kimi 会使用 --yolo"
+        case .agy:
+            detail = "Antigravity 会使用 --dangerously-skip-permissions"
+        case .kiro:
+            detail = "Kiro 会使用 --trust-all-tools"
+        }
         let alert = NSAlert()
         alert.messageText = "启用完全访问权限？"
-        alert.informativeText = "Claude 会使用 bypassPermissions，Codex 会使用 danger-full-access，可能跳过文件修改和命令执行确认。"
+        alert.informativeText = "\(detail)，可能跳过文件修改和命令执行确认。"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "启用")
         alert.addButton(withTitle: "取消")

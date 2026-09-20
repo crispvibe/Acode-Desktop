@@ -3,33 +3,59 @@ import Foundation
 enum CLIType: String, CaseIterable, Codable, Identifiable {
     case claude
     case codex
+    case cursor
     case gemini
+    case qwen
+    case copilot
+    case kimi
+    case agy
+    case kiro
     case custom
 
-    static let visibleCases: [CLIType] = [.claude, .codex]
+    static let visibleCases: [CLIType] = [.claude, .codex, .cursor, .gemini, .qwen, .copilot, .kimi, .agy, .kiro]
 
     var id: String { rawValue }
 
     var visibleValue: CLIType {
         switch self {
-        case .claude, .codex: self
-        case .gemini, .custom: .claude
+        case .custom: .claude
+        default: self
         }
     }
 
     var displayName: String {
         switch visibleValue {
-        case .claude: "Claude Code"
+        case .claude, .custom: "Claude Code"
         case .codex: "Codex"
-        case .gemini, .custom: "Claude Code"
+        case .cursor: "Cursor Agent"
+        case .gemini: "Gemini"
+        case .qwen: "Qwen Code"
+        case .copilot: "Copilot"
+        case .kimi: "Kimi"
+        case .agy: "Antigravity"
+        case .kiro: "Kiro"
         }
     }
 
     var executable: String {
         switch visibleValue {
-        case .claude: "claude"
+        case .claude, .custom: "claude"
         case .codex: "codex"
-        case .gemini, .custom: "claude"
+        case .cursor: "cursor-agent"
+        case .gemini: "gemini"
+        case .qwen: "qwen"
+        case .copilot: "copilot"
+        case .kimi: "kimi"
+        case .agy: "agy"
+        case .kiro: "kiro-cli"
+        }
+    }
+
+    /// 探测时按顺序尝试的可执行文件名（Kiro 发行版同时存在 kiro-cli / kiro 两种命名）。
+    var executableCandidates: [String] {
+        switch visibleValue {
+        case .kiro: ["kiro-cli", "kiro"]
+        default: [executable]
         }
     }
 }
@@ -235,6 +261,10 @@ struct AppSettings: Codable, Equatable {
     // Custom model IDs (previously stored in UserDefaults).
     var customClaudeModelIDs: [String]
     var customCodexModelIDs: [String]
+    /// 非 Claude/Codex CLI 的模型/思考强度记忆，按 CLIType.rawValue 分桶，
+    /// 避免不同第三方 CLI 互相覆盖上次选择。
+    var selectedModelIDsByCLI: [String: String]
+    var selectedReasoningEffortsByCLI: [String: ChatReasoningEffort]
     // Chat panel width (previously stored via @AppStorage).
     var chatPanelWidth: Double
     var sidebarProjectSectionHeight: Double
@@ -295,6 +325,8 @@ struct AppSettings: Codable, Equatable {
         remoteChatServerBindLAN: Bool = true,
         customClaudeModelIDs: [String] = [],
         customCodexModelIDs: [String] = [],
+        selectedModelIDsByCLI: [String: String] = [:],
+        selectedReasoningEffortsByCLI: [String: ChatReasoningEffort] = [:],
         chatPanelWidth: Double = 420,
         sidebarProjectSectionHeight: Double = 252,
         settingsSchemaVersion: Int = 0
@@ -322,6 +354,8 @@ struct AppSettings: Codable, Equatable {
         self.remoteChatServerBindLAN = remoteChatServerBindLAN
         self.customClaudeModelIDs = customClaudeModelIDs
         self.customCodexModelIDs = customCodexModelIDs
+        self.selectedModelIDsByCLI = selectedModelIDsByCLI
+        self.selectedReasoningEffortsByCLI = selectedReasoningEffortsByCLI
         self.chatPanelWidth = chatPanelWidth
         self.sidebarProjectSectionHeight = sidebarProjectSectionHeight
         self.settingsSchemaVersion = settingsSchemaVersion
@@ -352,6 +386,8 @@ struct AppSettings: Codable, Equatable {
         remoteChatServerBindLAN = try values.decodeIfPresent(Bool.self, forKey: .remoteChatServerBindLAN) ?? true
         customClaudeModelIDs = try values.decodeIfPresent([String].self, forKey: .customClaudeModelIDs) ?? []
         customCodexModelIDs = try values.decodeIfPresent([String].self, forKey: .customCodexModelIDs) ?? []
+        selectedModelIDsByCLI = try values.decodeIfPresent([String: String].self, forKey: .selectedModelIDsByCLI) ?? [:]
+        selectedReasoningEffortsByCLI = try values.decodeIfPresent([String: ChatReasoningEffort].self, forKey: .selectedReasoningEffortsByCLI) ?? [:]
         chatPanelWidth = try values.decodeIfPresent(Double.self, forKey: .chatPanelWidth) ?? 420
         sidebarProjectSectionHeight = try values.decodeIfPresent(Double.self, forKey: .sidebarProjectSectionHeight) ?? 252
         settingsSchemaVersion = try values.decodeIfPresent(Int.self, forKey: .settingsSchemaVersion) ?? 0

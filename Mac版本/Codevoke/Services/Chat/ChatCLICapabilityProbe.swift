@@ -62,17 +62,23 @@ enum ChatCLICapabilityProbe {
     }
 
     private static func performProbeAll() async -> [CLIType: ChatCLICapability] {
-        async let claude = probe(.claude)
-        async let codex = probe(.codex)
-        return await [
-            .claude: claude,
-            .codex: codex
-        ]
+        await withTaskGroup(of: (CLIType, ChatCLICapability).self) { group in
+            for cli in CLIType.visibleCases {
+                group.addTask {
+                    (cli, await probe(cli))
+                }
+            }
+            var result: [CLIType: ChatCLICapability] = [:]
+            for await (cli, capability) in group {
+                result[cli] = capability
+            }
+            return result
+        }
     }
 
     static func probe(_ cli: CLIType) async -> ChatCLICapability {
         let visible = cli.visibleValue
-        guard let executable = await locateExecutable(named: visible.executable) else {
+        guard let executable = await locateExecutable(candidates: visible.executableCandidates) else {
             return ChatCLICapability(
                 cli: visible,
                 executablePath: nil,
@@ -83,12 +89,21 @@ enum ChatCLICapabilityProbe {
                 supportsResume: false,
                 supportsContinue: false,
                 supportsAppServer: false,
-                errorMessage: "未找到 \(visible.executable)，请先安装或把它加入 PATH。"
+                errorMessage: "未找到 \(visible.executableCandidates.joined(separator: " 或 "))，请先安装或把它加入 PATH。"
             )
         }
 
         let versionOutput = await ChatProcessRunner.run(executable, arguments: ["--version"], timeout: 5)
-        let helpOutput = await ChatProcessRunner.run(executable, arguments: ["--help"], timeout: 5)
+        var helpOutput = await ChatProcessRunner.run(executable, arguments: ["--help"], timeout: 5)
+        // kiro-cli 的 print/headless 参数在 `chat` 子命令上，顶层 --help 只列出子命令。
+        if visible == .kiro {
+            let chatHelp = await ChatProcessRunner.run(executable, arguments: ["chat", "--help"], timeout: 5)
+            helpOutput = ChatProcessOutput(
+                status: helpOutput.status == 0 ? chatHelp.status : helpOutput.status,
+                stdout: helpOutput.stdout + "\n" + chatHelp.stdout,
+                stderr: helpOutput.stderr + "\n" + chatHelp.stderr
+            )
+        }
         let help = helpOutput.stdout + "\n" + helpOutput.stderr
         let version = (versionOutput.stdout.nonEmptyTrimmed ?? versionOutput.stderr.nonEmptyTrimmed)
         let launchError = launchErrorMessage(
@@ -127,7 +142,22 @@ enum ChatCLICapabilityProbe {
                 supportsAppServer: launchError == nil && (appServerHelp.status == 0 || appServerText.contains("listen") || appServerText.contains("app-server")),
                 errorMessage: launchError
             )
-        case .gemini, .custom:
+        case .cursor, .gemini, .qwen, .copilot, .kimi, .agy, .kiro:
+            // 第三方 CLI 都是一次性无头调用（无 stdin 协议、无内嵌权限通道），
+            // 能力只探测可执行文件存在性与 help 中声明的 stream-json / resume / continue。
+            return ChatCLICapability(
+                cli: visible,
+                executablePath: executable,
+                version: version,
+                supportsStreamJSON: launchError == nil && (help.contains("stream-json") || (help.contains("--output-format") && help.contains("json"))),
+                supportsStreamJSONInput: false,
+                supportsPermissionPromptTool: false,
+                supportsResume: launchError == nil && (help.contains("--resume") || help.contains("--session") || help.contains("--resume-id")),
+                supportsContinue: launchError == nil && (help.contains("--continue") || help.contains("--resume")),
+                supportsAppServer: false,
+                errorMessage: launchError
+            )
+        case .custom:
             return await probe(.claude)
         }
     }
@@ -135,7 +165,8 @@ enum ChatCLICapabilityProbe {
     private static func cacheSignature() -> String {
         let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
         let executables = CLIType.visibleCases
-            .map { executableSignature(named: $0.executable) }
+            .flatMap(\.executableCandidates)
+            .map { executableSignature(named: $0) }
             .joined(separator: "|")
         return [ChatCLIEnvironment.defaultPath, path, executables].joined(separator: "\n")
     }
@@ -152,6 +183,15 @@ enum ChatCLICapabilityProbe {
                 return "\(candidate)=\(resolved):\(modifiedAt):\(size)"
             }
             .joined(separator: ";")
+    }
+
+    private static func locateExecutable(candidates names: [String]) async -> String? {
+        for name in names {
+            if let path = await locateExecutable(named: name) {
+                return path
+            }
+        }
+        return nil
     }
 
     private static func locateExecutable(named name: String) async -> String? {

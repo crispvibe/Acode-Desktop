@@ -654,10 +654,11 @@ final class RuntimeStorePanelControllerLookup: PanelControllerLookup, PanelContr
     func composerPlaceholder(for controller: ChatPanelController) -> String {
         // Default Mac placeholder; iOS doesn't strictly need this — it's a UX
         // hint. Kept short to avoid bloating every snapshot.
-        switch controller.composerCLI.visibleValue {
-        case .claude: return "向 Claude Code 提问…"
+        let cli = controller.composerCLI.visibleValue
+        switch cli {
+        case .claude, .custom: return "向 Claude Code 提问…"
         case .codex: return "向 Codex 提问…"
-        case .gemini, .custom: return "输入消息…"
+        default: return "向 \(cli.displayName) 提问…"
         }
     }
 
@@ -729,12 +730,16 @@ final class RuntimeStorePanelControllerLookup: PanelControllerLookup, PanelContr
     private func modelID(for cli: CLIType) -> String {
         guard let appState else { return modelService?.defaultModelID(for: cli) ?? ChatModelCatalog.defaultModelID(for: cli) }
         switch cli.visibleValue {
-        case .claude, .gemini, .custom:
+        case .claude, .custom:
             return appState.settings.selectedClaudeModelID.nonEmptyTrimmed
                 ?? modelService?.defaultModelID(for: cli)
                 ?? ChatModelCatalog.defaultModelID(for: cli)
         case .codex:
             return appState.settings.selectedCodexModelID.nonEmptyTrimmed
+                ?? modelService?.defaultModelID(for: cli)
+                ?? ChatModelCatalog.defaultModelID(for: cli)
+        default:
+            return appState.settings.selectedModelIDsByCLI[cli.visibleValue.rawValue]?.nonEmptyTrimmed
                 ?? modelService?.defaultModelID(for: cli)
                 ?? ChatModelCatalog.defaultModelID(for: cli)
         }

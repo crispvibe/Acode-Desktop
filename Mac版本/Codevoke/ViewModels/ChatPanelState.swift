@@ -695,11 +695,18 @@ final class ChatPanelController: ObservableObject {
             appendError("当前 Codex 版本不支持 app-server，无法在内嵌对话中启动。")
             return false
         }
-        if visibleCLI == .claude, request.permissionMode == .ask {
+        if request.permissionMode == .ask, visibleCLI != .codex {
+            // 除 Codex（app-server 审批回写）外，其余 CLI 的无头进程都没有运行中
+            // 权限应答通道，ask 模式会卡死在永远不会到达的权限提示上。
             status = .unsupportedVersion
-            let reason = capability.supportsStreamJSONInput
-                ? "当前 Claude Code CLI 未公开 stdin 权限 allow/deny 回写协议。"
-                : "当前 Claude Code 版本不支持 stream-json stdin 输入。"
+            let reason: String
+            if visibleCLI == .claude {
+                reason = capability.supportsStreamJSONInput
+                    ? "当前 Claude Code CLI 未公开 stdin 权限 allow/deny 回写协议。"
+                    : "当前 Claude Code 版本不支持 stream-json stdin 输入。"
+            } else {
+                reason = "当前 \(visibleCLI.displayName) 无头模式不支持运行中权限审批。"
+            }
             appendError("\(reason)请改用自动编辑/完全访问权限后重试，避免工具调用时出现无法响应的假权限按钮。")
             return false
         }
@@ -769,7 +776,7 @@ final class ChatPanelController: ObservableObject {
             resumeSessionID: effectiveResumeSessionID(request.resumeSessionID, for: session, cli: visibleCLI, projectPath: request.project.path),
             supportsStreamJSONInput: capability.supportsStreamJSONInput
         )
-        let backend: ChatProcessBackend = visibleCLI == .codex ? CodexAppServerBackend() : ClaudeCodeProcessBackend()
+        let backend = ChatBackendFactory.makeBackend(for: visibleCLI)
         activeBackend = backend
         stopFallbackTask?.cancel()
         stopFallbackTask = nil

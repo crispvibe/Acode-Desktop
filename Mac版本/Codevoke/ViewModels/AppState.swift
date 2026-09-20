@@ -2129,15 +2129,22 @@ final class AppState: ObservableObject {
         let cli = cli.visibleValue
         settings.chatCLI = cli
         settings.chatPermissionMode = permissionMode
-        if cli == .codex {
+        switch cli {
+        case .codex:
             settings.selectedCodexModelID = modelID
             if let reasoningEffort {
                 settings.selectedCodexReasoningEffort = reasoningEffort
             }
-        } else {
+        case .claude, .custom:
             settings.selectedClaudeModelID = modelID
             if let reasoningEffort {
                 settings.selectedClaudeReasoningEffort = reasoningEffort
+            }
+        default:
+            // 第三方 CLI 各自记忆模型/思考强度，互不覆盖。
+            settings.selectedModelIDsByCLI[cli.rawValue] = modelID
+            if let reasoningEffort {
+                settings.selectedReasoningEffortsByCLI[cli.rawValue] = reasoningEffort
             }
         }
         selectedCLI = cli

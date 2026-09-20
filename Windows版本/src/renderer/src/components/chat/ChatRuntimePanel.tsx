@@ -22,7 +22,7 @@ import type {
   ProjectSnapshot,
   QueuedChatRequest
 } from "@shared/chat";
-import { isChatRunStatusRunning } from "@shared/chat";
+import { chatCLIDisplayNames, chatCLIValues, isChatRunStatusRunning } from "@shared/chat";
 import type { CLIKind, PermissionMode, ReasoningEffort } from "@shared/settings";
 import { createIpcChatBackend, useChatStore } from "@renderer/src/stores/chatStore";
 import { useEditorStore } from "@renderer/src/stores/editorStore";
@@ -1246,7 +1246,7 @@ export function ChatRuntimePanel() {
           <div className="composer-picker-layer">
             {activePicker === "cli" ? (
               <PickerGroup>
-                {(["claude", "codex"] as CLIKind[]).map((cli) => (
+                {chatCLIValues.map((cli) => (
                   <PickerOption key={cli} active={activeCLI === cli} label={cliLabel(cli)} onClick={() => void selectCLI(cli)} />
                 ))}
               </PickerGroup>
@@ -1301,7 +1301,7 @@ export function ChatRuntimePanel() {
 }
 
 function cliLabel(cli: CLIKind): string {
-  return cli === "codex" ? "Codex" : "Claude Code";
+  return chatCLIDisplayNames[cli];
 }
 
 function permissionLabel(mode: PermissionMode): string {

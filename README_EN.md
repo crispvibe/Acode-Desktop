@@ -18,15 +18,15 @@ Repo: <https://github.com/crispvibe/Acode-Desktop> · License: [PolyForm Noncomm
 - 📱 **Drive desktop AI from your phone**: send tasks, watch progress, approve permissions, answer the agent's questions — keep AI coding while you're away from the desk
 - 🔌 **Zero-config connect**: auto-discovers the host on the same Wi-Fi; or enter `IP:18765` manually
 - 🛠 **See every step**: task lists, file reads, search, diffs, terminal commands, sub-agents — each rendered as its own card
-- ⚡ **Dual engines**: switch between Claude Code and Codex mid-conversation; adjust model and reasoning effort on the fly
+- ⚡ **All mainstream CLIs**: Claude Code, Codex, Cursor Agent, Gemini, Qwen Code, Copilot, Kimi, Antigravity, Kiro — switch freely; adjust model and reasoning effort mid-conversation
 - 🔓 **No account system**: no sign-up, no login, nothing goes through the cloud
 - 🖥 **Four platforms**: macOS / Windows as the host, iOS / Android as the client
 
-More CLIs (cursor-agent, Gemini CLI, etc.) are planned — contributions welcome.
+9 mainstream CLIs are already wired in. Want another (Aider, OpenCode, Goose…)? A PR is one host-side adapter away.
 
 ## Quick start
 
-**Prerequisite**: install Claude Code (`claude`) or Codex (`codex`) CLI on the host computer.
+**Prerequisite**: have any supported CLI installed and signed in on the host: `claude`, `codex`, `cursor-agent`, `gemini`, `qwen`, `copilot`, `kimi`, `agy`, `kiro-cli`.
 
 **Desktop host** (pick one):
 

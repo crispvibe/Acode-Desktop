@@ -12,7 +12,7 @@
 //     composer 对象供手机镜像与发送；桌面输入框与手机 composer 暂不双向统一。
 //   - models / capabilities 由 settings 派生的最小集合。
 
-import { isChatRunStatusRunning } from "@shared/chat";
+import { chatCLIValues, isChatRunStatusRunning } from "@shared/chat";
 import type {
   ChatCLI,
   ChatMessage,
@@ -538,7 +538,7 @@ function asPermissionDecision(value: string | undefined): PermissionDecision {
 function buildModels(settings: AppSettings | null) {
   const defaultCLI: ChatCLI = settings?.defaultCLI ?? "claude";
   const models: Array<{ id: string; title: string; cli: string; isDefault: boolean }> = [];
-  for (const cli of ["claude", "codex"] as const) {
+  for (const cli of chatCLIValues) {
     const profiles = settings?.profiles.filter((profile) => profile.kind === cli && profile.enabled) ?? [];
     const distinct = [...new Set(profiles.map((profile) => profile.model?.trim()).filter((model): model is string => Boolean(model)))];
     if (distinct.length === 0) distinct.push("default");
@@ -550,10 +550,14 @@ function buildModels(settings: AppSettings | null) {
 }
 
 function buildCapabilities() {
-  return [
-    { cli: "claude", executableAvailable: true, supportsStreamJSONInput: true, supportsAppServer: false, errorMessage: null },
-    { cli: "codex", executableAvailable: true, supportsStreamJSONInput: true, supportsAppServer: true, errorMessage: null }
-  ];
+  return chatCLIValues.map((cli) => ({
+    cli,
+    executableAvailable: true,
+    supportsStreamJSONInput: true,
+    // 目前只有 Codex 走 app-server 协议；其余 CLI（含新接入 7 家）都是一次性 spawn + stdout 协议。
+    supportsAppServer: cli === "codex",
+    errorMessage: null
+  }));
 }
 
 let installedBridge: RemoteHostBridge | null = null;

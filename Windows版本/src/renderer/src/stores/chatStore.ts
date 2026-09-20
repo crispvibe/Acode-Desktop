@@ -21,7 +21,8 @@ import type {
   SessionActivity,
   SessionMode
 } from "@shared/chat";
-import { contextWindowForModel, isChatRunStatusRunning } from "@shared/chat";
+import { chatCLIDefaultCommands, contextWindowForModel, isChatRunStatusRunning } from "@shared/chat";
+import { cliLaunchEnvFor } from "@shared/settings";
 import type { AppSettings, CLIProfile, PermissionMode, ReasoningEffort } from "@shared/settings";
 import { useSettingsStore } from "./settingsStore";
 
@@ -993,7 +994,8 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
               runtime = { ...runtime, didAutoCompact: true };
               statusText = "上下文接近上限，自动压缩中…";
             } else if (!runtime.didAutoCompact) {
-              statusText = cli === "codex" ? "上下文接近上限" : "上下文接近上限（CLI 将自动压缩）";
+              // 只有 Claude Code 自带 CLI 侧自动压缩，其余 CLI（含新接入的 7 家）如实提示。
+              statusText = cli === "claude" ? "上下文接近上限（CLI 将自动压缩）" : "上下文接近上限";
             }
           }
 
@@ -1285,7 +1287,8 @@ function selectDefaultProfile(settings: AppSettings | null | undefined, cli: Cha
 
 function executableForRequest(request: QueuedChatRequest): string {
   const profile = profileForRequest(request);
-  return normalizeOptional(profile?.executablePath) ?? request.cli;
+  // cli 字符串与二进制名不同名（cursor→cursor-agent、kiro→kiro-cli），按表回退。
+  return normalizeOptional(profile?.executablePath) ?? chatCLIDefaultCommands[request.cli];
 }
 
 function profileForRequest(request: QueuedChatRequest): CLIProfile | null {
@@ -1304,11 +1307,9 @@ function environmentForRequest(request: QueuedChatRequest): Record<string, strin
   }
 
   const baseURL = normalizeOptional(profile?.baseUrl);
-  if (baseURL && request.cli === "claude" && !env.ANTHROPIC_BASE_URL) {
-    env.ANTHROPIC_BASE_URL = baseURL;
-  }
-  if (baseURL && request.cli === "codex" && !env.OPENAI_BASE_URL) {
-    env.OPENAI_BASE_URL = baseURL;
+  const baseURLEnv = cliLaunchEnvFor(request.cli).baseURLEnv;
+  if (baseURL && baseURLEnv && !env[baseURLEnv]) {
+    env[baseURLEnv] = baseURL;
   }
   return env;
 }

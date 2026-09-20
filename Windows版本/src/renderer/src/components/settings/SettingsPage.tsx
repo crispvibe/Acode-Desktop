@@ -14,6 +14,8 @@ import {
   Trash2
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { chatCLIDisplayNames, chatCLIValues } from "@shared/chat";
+import { cliLaunchEnvFor } from "@shared/settings";
 import type {
   AppSettings,
   CLIKind,
@@ -33,8 +35,7 @@ import { selectProfiles, useSettingsStore } from "../../stores/settingsStore";
 
 type SettingsTabID =
   | "general"
-  | "claude"
-  | "codex"
+  | CLIKind
   | "remoteChat"
   | "appendRules"
   | "globalRules"
@@ -46,8 +47,11 @@ interface SettingsPageProps {
 
 const tabs = [
   { id: "general", title: "通用", icon: Settings },
-  { id: "claude", title: "Claude Code", icon: Terminal },
-  { id: "codex", title: "Codex", icon: Cpu },
+  ...chatCLIValues.map((cli) => ({
+    id: cli as SettingsTabID,
+    title: chatCLIDisplayNames[cli],
+    icon: cli === "codex" ? Cpu : Terminal
+  })),
   { id: "remoteChat", title: "设备连接", icon: Monitor },
   { id: "appendRules", title: "追加规则", icon: FileText },
   { id: "globalRules", title: "全局规则", icon: Copy },
@@ -172,11 +176,10 @@ function SettingsTabContent({
   selectedTab: SettingsTabID;
   settings: AppSettings;
 }) {
+  if ((chatCLIValues as readonly string[]).includes(selectedTab)) {
+    return <ProfileSettings kind={selectedTab as CLIKind} settings={settings} />;
+  }
   switch (selectedTab) {
-    case "claude":
-      return <ProfileSettings kind="claude" settings={settings} />;
-    case "codex":
-      return <ProfileSettings kind="codex" settings={settings} />;
     case "remoteChat":
       return <RemoteChatSettings />
     case "appendRules":
@@ -206,10 +209,7 @@ function GeneralSettings({ settings }: { settings: AppSettings }) {
           <SettingsSelect
             label="默认 CLI"
             value={settings.defaultCLI}
-            options={[
-              { value: "claude", label: "Claude Code" },
-              { value: "codex", label: "Codex" }
-            ]}
+            options={chatCLIValues.map((cli) => ({ value: cli, label: chatCLIDisplayNames[cli] }))}
             onChange={(value) => void savePatch({ defaultCLI: value as CLIKind })}
           />
           <SettingsSelect
@@ -300,18 +300,18 @@ function ProfileSettings({ kind, settings }: { kind: CLIKind; settings: AppSetti
   const createProfile = useSettingsStore((state) => state.createProfile);
   const probeCLI = useSettingsStore((state) => state.probeCLI);
   const lastProbe = useSettingsStore((state) => state.lastProbe);
-  const [newName, setNewName] = useState(kind === "claude" ? "Claude 中转站" : "Codex 配置");
-  const isClaude = kind === "claude";
+  const [newName, setNewName] = useState(`${chatCLIDisplayNames[kind]} 配置`);
+  const displayName = chatCLIDisplayNames[kind];
 
   return (
     <div className="settings-stack">
       <div className="settings-card">
         <div className="settings-card-intro">
-          <h3>{isClaude ? "Claude Code 中转站列表" : "Codex 中转站列表"}</h3>
+          <h3>{displayName} 中转站列表</h3>
           <p>
-            {isClaude
-              ? "列表管理 API 地址、模型、命令路径和 Auth Token 引用；明文只会提交给 main 进程保存。"
-              : "列表管理 base_url、模型、命令路径和 API Key 引用；wire_api/app-server 网络监听暂未接入，不会伪造生效状态。"}
+            {kind === "codex"
+              ? "列表管理 base_url、模型、命令路径和 API Key 引用；wire_api/app-server 网络监听暂未接入，不会伪造生效状态。"
+              : "列表管理 API 地址、模型、命令路径和密钥引用；明文只会提交给 main 进程保存。"}
           </p>
         </div>
         <div className="settings-actions">
@@ -331,7 +331,7 @@ function ProfileSettings({ kind, settings }: { kind: CLIKind; settings: AppSetti
 
       {profiles.length === 0 ? (
         <div className="settings-card">
-          <p>{isClaude ? "还没有 Claude Code 配置。" : "还没有 Codex 配置。"}</p>
+          <p>还没有 {displayName} 配置。</p>
         </div>
       ) : profiles.map((profile) => (
         <ProfileEditor key={profile.id} profile={profile} />
@@ -358,6 +358,13 @@ function ProfileEditor({ profile }: { profile: CLIProfile }) {
   const updateProfile = useSettingsStore((state) => state.updateProfile);
   const deleteProfile = useSettingsStore((state) => state.deleteProfile);
   const setDefaultProfile = useSettingsStore((state) => state.setDefaultProfile);
+  const envNames = cliLaunchEnvFor(profile.kind);
+  const displayName = chatCLIDisplayNames[profile.kind];
+  // 只有映射了注入环境变量的 CLI 才显示密钥字段，不伪造生效状态。
+  const secretField: SecretField | null =
+    profile.kind === "claude" ? "authToken" : envNames.apiKeyEnv ? "apiKey" : null;
+  const secretLabel =
+    profile.kind === "claude" ? "ANTHROPIC_AUTH_TOKEN" : envNames.apiKeyEnv ?? "";
   const [name, setName] = useState(profile.name);
   const [executablePath, setExecutablePath] = useState(profile.executablePath ?? "");
   const [baseUrl, setBaseUrl] = useState(profile.baseUrl ?? "");
@@ -407,7 +414,7 @@ function ProfileEditor({ profile }: { profile: CLIProfile }) {
   return (
     <div className={`settings-card ${profile.isDefault ? "selected" : ""}`}>
       <div className="settings-card-intro">
-        <h3>{profile.kind === "claude" ? "Claude Code Profile" : "Codex Profile"}</h3>
+        <h3>{displayName} Profile</h3>
         <p>{profile.isDefault ? "当前默认配置" : "保存后可设为当前配置。"}</p>
       </div>
       <div className="settings-grid">
@@ -420,9 +427,10 @@ function ProfileEditor({ profile }: { profile: CLIProfile }) {
         <TextInput label="工作目录" value={workingDirectory} placeholder="可选" onChange={setWorkingDirectory} />
         {profile.kind === "claude" ? (
           <TextInput label="配置路径" value={configPath} placeholder="可选" onChange={setConfigPath} />
-        ) : (
+        ) : null}
+        {profile.kind === "codex" ? (
           <SettingsSelect label="wire_api（暂未接入）" value={wireApi} options={wireApiOptions} onChange={setWireApi} disabled />
-        )}
+        ) : null}
       </div>
 
       {profile.kind === "codex" ? (
@@ -445,11 +453,9 @@ function ProfileEditor({ profile }: { profile: CLIProfile }) {
       ) : null}
 
       <div className="settings-grid">
-        {profile.kind === "claude" ? (
-          <SecretEditor profile={profile} field="authToken" label="ANTHROPIC_AUTH_TOKEN" />
-        ) : (
-          <SecretEditor profile={profile} field="apiKey" label="OPENAI_API_KEY" />
-        )}
+        {secretField ? (
+          <SecretEditor profile={profile} field={secretField} label={secretLabel} />
+        ) : null}
         <SettingsPanel title="当前状态" subtitle="只显示配置摘要和 secret 引用，不显示密钥明文。">
           <div className="settings-row"><span>启用</span><b>{profile.enabled ? "是" : "否"}</b></div>
           <div className="settings-row"><span>Secret</span><b>{secretSummary(profile)}</b></div>
@@ -677,7 +683,7 @@ function GlobalRulesSettings({ settings }: { settings: AppSettings }) {
         <div className="segmented" role="tablist" aria-label="规则目标">
           {(["claude", "codex"] as const).map((item) => (
             <button className={target === item ? "active" : ""} key={item} type="button" onClick={() => setTarget(item)}>
-              {item === "claude" ? "Claude Code" : "Codex"}
+              {chatCLIDisplayNames[item]}
             </button>
           ))}
         </div>
