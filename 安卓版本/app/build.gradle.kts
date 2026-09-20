@@ -67,6 +67,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     compileOnly("com.google.errorprone:error_prone_annotations:2.36.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // 扫码配对二维码（WAN 直连方案 §6）：嵌入 DecoratedBarcodeView，仅依赖 zxing core。
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // EndpointStore 持久化配对 token/指纹（方案 §6）：EncryptedSharedPreferences。
+    implementation("androidx.security:security-crypto:1.0.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

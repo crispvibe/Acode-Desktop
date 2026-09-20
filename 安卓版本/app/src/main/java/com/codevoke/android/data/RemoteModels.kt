@@ -4,14 +4,22 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
+/**
+ * 直连目标配置。WAN 直连方案 §4.1 起 LAN/WAN 统一 wss+Bearer 自签加密，
+ * 不再保留明文路径；token/certFP 来自配对（QR/连接串/6位码）。
+ */
 data class RemoteChatConfig(
     val macHost: String = "",
     val port: Int = 18765,
+    val token: String = "",
+    val certFP: String = "",
 ) {
+    /** IPv6 字面量进 URL 必须加方括号。 */
+    private val urlHost: String get() = if (':' in macHost.trim()) "[${macHost.trim()}]" else macHost.trim()
     val supportsDirectHttp: Boolean get() = macHost.isNotBlank() && port in 1..65535
-    val isComplete: Boolean get() = supportsDirectHttp
-    val baseUrl: String get() = "http://${macHost.trim()}:$port"
-    val webSocketUrl: String get() = "ws://${macHost.trim()}:$port/chat"
+    val isComplete: Boolean get() = supportsDirectHttp && token.isNotBlank() && certFP.isNotBlank()
+    val baseUrl: String get() = "https://$urlHost:$port"
+    val webSocketUrl: String get() = "wss://$urlHost:$port/chat"
 }
 
 data class RemoteProject(

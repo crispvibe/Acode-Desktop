@@ -3,22 +3,10 @@ package com.codevoke.android.data
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import okhttp3.OkHttpClient
 import java.net.Inet4Address
 import java.net.NetworkInterface
-import java.util.concurrent.TimeUnit
 
 object LanNetworkSelector {
-    fun wifiBoundClient(context: Context, connectTimeoutSeconds: Long = 8): OkHttpClient? {
-        val network = wifiNetwork(context) ?: return null
-        return OkHttpClient.Builder()
-            .socketFactory(network.socketFactory)
-            .connectTimeout(connectTimeoutSeconds, TimeUnit.SECONDS)
-            .readTimeout(connectTimeoutSeconds, TimeUnit.SECONDS)
-            .writeTimeout(connectTimeoutSeconds, TimeUnit.SECONDS)
-            .build()
-    }
-
     fun wifiNetwork(context: Context): android.net.Network? {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val active = cm.activeNetwork
@@ -29,22 +17,6 @@ object LanNetworkSelector {
         return cm.allNetworks.firstOrNull { network ->
             cm.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
         }
-    }
-
-    fun isOnWifi(context: Context): Boolean = wifiNetwork(context) != null
-
-    fun defaultLanClient(connectTimeoutSeconds: Long = 8): OkHttpClient =
-        OkHttpClient.Builder()
-            .connectTimeout(connectTimeoutSeconds, TimeUnit.SECONDS)
-            .readTimeout(connectTimeoutSeconds, TimeUnit.SECONDS)
-            .writeTimeout(connectTimeoutSeconds, TimeUnit.SECONDS)
-            .build()
-
-    /** Prefer Wi-Fi bound client, then fall back to the process default route. */
-    fun lanClientsForAttempt(context: Context, connectTimeoutSeconds: Long = 8): List<OkHttpClient> {
-        val wifiClient = wifiBoundClient(context, connectTimeoutSeconds)
-        val defaultClient = defaultLanClient(connectTimeoutSeconds)
-        return if (wifiClient != null) listOf(wifiClient, defaultClient) else listOf(defaultClient)
     }
 
     fun localWifiIPv4(context: Context): String? {

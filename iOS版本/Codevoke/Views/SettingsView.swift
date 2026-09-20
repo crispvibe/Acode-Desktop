@@ -143,6 +143,7 @@ private struct SettingsConnectionPage: View {
     @StateObject private var connectViewModel = DeviceConnectViewModel()
     @State private var hostInput = ""
     @State private var portInput = ""
+    @State private var pendingPairing: DeviceConnectViewModel.PendingPairing?
 
     var body: some View {
         SettingsPageContainer(title: "远程设备") {
@@ -157,6 +158,11 @@ private struct SettingsConnectionPage: View {
         }
         .task {
             await listViewModel.scan(preferredHost: viewModel.config.macHost)
+        }
+        .sheet(item: $pendingPairing) { pending in
+            PairCodeSheet(pending: pending, isWorking: connectViewModel.isConnecting, errorMessage: connectViewModel.message) { code in
+                submitPairCode(code)
+            }
         }
     }
 
@@ -222,7 +228,7 @@ private struct SettingsConnectionPage: View {
                     SettingsEmptyRow(icon: "desktopcomputer", text: "没有发现设备，请确认电脑端已开启设备连接服务。")
                 } else {
                     VStack(spacing: 10) {
-                        ForEach(listViewModel.hosts, id: \.self) { host in
+                        ForEach(listViewModel.hosts) { host in
                             lanHostRow(host)
                         }
                     }
@@ -232,8 +238,9 @@ private struct SettingsConnectionPage: View {
         }
     }
 
-    private func lanHostRow(_ host: String) -> some View {
-        HStack(spacing: 12) {
+    private func lanHostRow(_ host: DiscoveredLanHost) -> some View {
+        let paired = listViewModel.isPaired(host)
+        return HStack(spacing: 12) {
             Image(systemName: "desktopcomputer")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Color.codevokeInk)
@@ -244,17 +251,17 @@ private struct SettingsConnectionPage: View {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 7, height: 7)
-                    Text(host)
+                    Text(host.name?.isEmpty == false ? host.name! : host.host)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.codevokeInk)
                 }
-                Text(L10n.key("局域网可连接"))
+                Text(L10n.key(paired ? "已配对 · 局域网可连接" : "局域网可连接 · 未配对"))
                     .font(.system(size: 12))
                     .foregroundStyle(Color.codevokeMuted)
             }
             Spacer(minLength: 0)
-            Button(L10n.string(connectViewModel.isConnecting ? "连接中…" : "连接")) {
-                Task { await apply(host: host, port: listViewModel.port) }
+            Button(L10n.string(connectViewModel.isConnecting ? "连接中…" : (paired ? "连接" : "配对"))) {
+                Task { await apply(host: host.host, port: host.port) }
             }
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.white)
@@ -293,10 +300,27 @@ private struct SettingsConnectionPage: View {
     }
 
     private func apply(host: String, port: Int) async {
-        guard let config = await connectViewModel.connect(host: host, port: port) else { return }
-        viewModel.config = config
-        viewModel.saveConnectionConfig()
-        close()
+        guard let outcome = await connectViewModel.connect(host: host, port: port) else { return }
+        switch outcome {
+        case .connected(let config):
+            viewModel.config = config
+            viewModel.saveConnectionConfig()
+            close()
+        case .needsPairing(let pending):
+            pendingPairing = pending
+        }
+    }
+
+    private func submitPairCode(_ code: String) {
+        guard let pending = pendingPairing else { return }
+        Task {
+            if let config = await connectViewModel.pair(pending, code: code) {
+                pendingPairing = nil
+                viewModel.config = config
+                viewModel.saveConnectionConfig()
+                close()
+            }
+        }
     }
 }
 

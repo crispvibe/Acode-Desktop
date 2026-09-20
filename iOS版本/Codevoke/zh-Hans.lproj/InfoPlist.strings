@@ -1,2 +1,2 @@
-"NSCameraUsageDescription" = "acode 需要使用相机拍摄照片并作为附件上传。";
+"NSCameraUsageDescription" = "acode 需要使用相机拍摄照片并作为附件上传，以及扫描电脑端二维码完成设备配对。";
 "NSLocalNetworkUsageDescription" = "acode 需要访问本地网络，以连接你已授权的电脑端 acode。";

@@ -2005,8 +2005,21 @@ button {
 
 .remote-metric-chips {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
+}
+
+.pairing-qr-row {
+  justify-content: flex-start;
+}
+
+.pairing-qr {
+  width: 220px;
+  height: 220px;
+  border: 1px solid var(--weak-hairline);
+  border-radius: 14px;
+  background: #fff;
+  padding: 10px;
 }
 
 .remote-metric-chip {

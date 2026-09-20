@@ -1,4 +1,5 @@
 import Combine
+import Darwin
 import Foundation
 import Network
 import ChatCore
@@ -123,6 +124,10 @@ private struct RemoteStreamEventCoalescer {
 final class RemoteChatServer {
     private let configuration: RemoteChatServerConfiguration
     private let router: RemoteChatRouter
+    private let identity: RemoteHostIdentity.Identity
+    private let authService: RemoteAuthService
+    private let pairingService: RemotePairingService
+    private let endpointPublisher: WanEndpointPublisher
     private let queue = DispatchQueue(label: "com.codevoke.remote-chat-server", qos: .userInitiated)
     private var listener: NWListener?
     var onDiagnosticsChanged: ((RemoteChatServerDiagnostics) -> Void)?
@@ -172,8 +177,18 @@ final class RemoteChatServer {
         self?.broadcastWebSocketEvent(event)
     }
 
-    init(configuration: RemoteChatServerConfiguration) {
+    init(
+        configuration: RemoteChatServerConfiguration,
+        identity: RemoteHostIdentity.Identity,
+        authService: RemoteAuthService = .shared,
+        pairingService: RemotePairingService = .shared,
+        endpointPublisher: WanEndpointPublisher
+    ) {
         self.configuration = configuration
+        self.identity = identity
+        self.authService = authService
+        self.pairingService = pairingService
+        self.endpointPublisher = endpointPublisher
         router = RemoteChatRouter(configuration: configuration)
         sessionsObserver = NotificationCenter.default.addObserver(forName: .remoteChatSessionsDidChange, object: nil, queue: nil) { [weak self] _ in
             self?.broadcastWebSocketEvent(RemoteChatStreamEvent(type: "sessions_changed", status: "changed"))
@@ -209,7 +224,12 @@ final class RemoteChatServer {
             throw RemoteChatServerError.invalidPort
         }
 
-        let parameters = NWParameters.tcp
+        // Wire contract §4.1/§4.3: every connection — LAN included — is TLS
+        // (wss) with the self-signed Keychain identity. Clients pin SPKI-SHA256.
+        let tlsOptions = NWProtocolTLS.Options()
+        sec_protocol_options_set_local_identity(tlsOptions.securityProtocolOptions, identity.secIdentity)
+        sec_protocol_options_set_min_tls_protocol_version(tlsOptions.securityProtocolOptions, .TLSv12)
+        let parameters = NWParameters(tls: tlsOptions)
         if !configuration.bindLAN {
             // requiredLocalEndpoint 在 NWListener 上的实际效果不稳定（不同 macOS 行为不一），
             // 因此只把它当作"尽量绑 loopback"的提示，真正的拦截在 newConnectionHandler 里做。
@@ -281,10 +301,24 @@ final class RemoteChatServer {
 
     private func handle(_ connection: NWConnection) {
         connection.start(queue: queue)
-        receiveRequest(from: connection, accumulated: Data(), startedAt: Date())
+        receiveRequest(from: connection, accumulated: Data(), startedAt: Date(), peerAddress: Self.peerAddressString(for: connection))
     }
 
-    private func receiveRequest(from connection: NWConnection, accumulated: Data, startedAt: Date) {
+    /// Peer IP string for auth bookkeeping (`/pair` source check, rate
+    /// limiting). Zone suffixes (`%en0`) are stripped.
+    private static func peerAddressString(for connection: NWConnection) -> String {
+        guard case .hostPort(let host, _) = connection.endpoint else { return "" }
+        let raw: String
+        switch host {
+        case .ipv4(let address): raw = "\(address)"
+        case .ipv6(let address): raw = "\(address)"
+        case .name(let name, _): raw = name
+        @unknown default: raw = ""
+        }
+        return String(raw.split(separator: "%").first.map(String.init) ?? raw)
+    }
+
+    private func receiveRequest(from connection: NWConnection, accumulated: Data, startedAt: Date, peerAddress: String) {
         // Audit A-P1: enforce a read deadline. Without this a slow client
         // could pin a socket indefinitely while drip-feeding `Content-Length`
         // bytes; the server would happily accumulate up to `maxRequestBytes`.
@@ -312,25 +346,148 @@ final class RemoteChatServer {
             guard RemoteChatHTTPCodec.containsHeaderTerminator(requestData),
                   let expectedLength = RemoteChatHTTPCodec.expectedRequestLength(for: requestData),
                   requestData.count >= expectedLength else {
-                self.receiveRequest(from: connection, accumulated: requestData, startedAt: startedAt)
+                self.receiveRequest(from: connection, accumulated: requestData, startedAt: startedAt, peerAddress: peerAddress)
                 return
             }
 
             do {
                 let request = try RemoteChatHTTPCodec.parseRequest(from: requestData)
-                if request.path == "/chat", RemoteChatWebSocket.isUpgradeRequest(request) {
-                    self.handleWebSocket(request, on: connection)
-                    return
-                }
-                if request.path == "/events" {
-                    self.send(self.eventsResponse(request: request), on: connection)
-                    return
-                }
-                self.send(self.router.route(request), on: connection)
+                self.dispatch(request, on: connection, peerAddress: peerAddress)
             } catch {
                 self.send(.error("bad_request", message: "请求内容格式不正确，请重试。", statusCode: 400, reasonPhrase: "Bad Request"), on: connection)
             }
         }
+    }
+
+    /// Wire contract §4.2 dispatch: `/health` and `/pair` are public (pair is
+    /// further restricted to private-network sources); everything else —
+    /// including the `/chat` WebSocket upgrade — requires `Bearer <token>`.
+    private func dispatch(_ request: RemoteChatHTTPRequest, on connection: NWConnection, peerAddress: String) {
+        if authService.isBanned(ip: peerAddress) {
+            send(.error("rate_limited", message: "尝试次数过多，请稍后再试。", statusCode: 429, reasonPhrase: "Too Many Requests"), on: connection)
+            return
+        }
+
+        switch request.path {
+        case "/health":
+            send(router.route(request), on: connection)
+            return
+        case "/pair":
+            send(pairResponse(request: request, peerAddress: peerAddress), on: connection)
+            return
+        default:
+            break
+        }
+
+        guard authenticate(request) != nil else {
+            authService.recordAuthFailure(ip: peerAddress)
+            // Contract §4.2 allows at most 5 failures per connection; this
+            // server closes the connection after every HTTP response anyway
+            // (one request per connection), so the first failure already
+            // ends it — strictly stronger than the 5-failure ceiling.
+            send(.error("unauthorized", message: "连接凭证无效，请重新连接。", statusCode: 401, reasonPhrase: "Unauthorized"), on: connection)
+            return
+        }
+
+        if request.path == "/chat", RemoteChatWebSocket.isUpgradeRequest(request) {
+            handleWebSocket(request, on: connection)
+            return
+        }
+        if request.path == "/connect_info" {
+            send(connectInfoResponse(request: request), on: connection)
+            return
+        }
+        if request.path == "/events" {
+            send(eventsResponse(request: request), on: connection)
+            return
+        }
+        send(router.route(request), on: connection)
+    }
+
+    private func authenticate(_ request: RemoteChatHTTPRequest) -> RemotePairedDevice? {
+        guard let header = request.headers["authorization"],
+              header.hasPrefix("Bearer ") else { return nil }
+        let token = String(header.dropFirst(7))
+        guard !token.isEmpty else { return nil }
+        return authService.authenticate(token: token)
+    }
+
+    /// `POST /pair` — private/loopback sources only; WAN sources get 403.
+    private func pairResponse(request: RemoteChatHTTPRequest, peerAddress: String) -> RemoteChatHTTPResponse {
+        guard Self.isPrivatePeerAddress(peerAddress) else {
+            return .error("pair_forbidden", message: "配对仅允许局域网来源。", statusCode: 403, reasonPhrase: "Forbidden")
+        }
+        guard request.method == "POST" else {
+            return .error("method_not_allowed", message: "当前请求方式不支持。", statusCode: 405, reasonPhrase: "Method Not Allowed")
+        }
+        guard let body = try? RemoteChatHTTPCodec.jsonDecoder.decode(RemotePairRequestDTO.self, from: request.body) else {
+            return .error("bad_request", message: "请求内容格式不正确，请重试。", statusCode: 400, reasonPhrase: "Bad Request")
+        }
+        switch pairingService.redeem(code: body.code, deviceName: body.deviceName, peerIP: peerAddress) {
+        case .success(let credential):
+            return .json(RemotePairResponseDTO(
+                token: credential.token,
+                fp: identity.spkiSHA256Hex,
+                name: RemoteHostInfo.displayName,
+                eps: endpointDTOs()
+            ))
+        case .failure(.rateLimited):
+            return .error("rate_limited", message: "尝试次数过多，请稍后再试。", statusCode: 429, reasonPhrase: "Too Many Requests")
+        case .failure(.invalidCode):
+            return .error("invalid_pairing_code", message: "配对码错误或已过期。", statusCode: 403, reasonPhrase: "Forbidden")
+        }
+    }
+
+    /// `GET /connect_info` — Bearer-authed; returns the current endpoint list
+    /// so a paired client can silently refresh addresses while on the same LAN.
+    private func connectInfoResponse(request: RemoteChatHTTPRequest) -> RemoteChatHTTPResponse {
+        guard request.method == "GET" else {
+            return .error("method_not_allowed", message: "当前请求方式不支持。", statusCode: 405, reasonPhrase: "Method Not Allowed")
+        }
+        return .json(RemoteConnectInfoDTO(name: RemoteHostInfo.displayName, eps: endpointDTOs()))
+    }
+
+    private func endpointDTOs() -> [RemoteEndpointDTO] {
+        endpointPublisher.currentSnapshot().endpoints.map { RemoteEndpointDTO(a: $0.address, p: $0.port) }
+    }
+
+    /// `/pair` source gate (spec §4.2): RFC1918 + link-local + loopback for
+    /// both families, including IPv4-mapped IPv6. Anything else is WAN → 403.
+    static func isPrivatePeerAddress(_ address: String) -> Bool {
+        if let v4 = ipv4Bytes(address) {
+            switch v4[0] {
+            case 10, 127: return true
+            case 169: return v4[1] == 254
+            case 172: return (16...31).contains(v4[1])
+            case 192: return v4[1] == 168
+            default: return false
+            }
+        }
+        if let v6 = ipv6Bytes(address) {
+            // ::1
+            if v6.dropLast().allSatisfy({ $0 == 0 }), v6.last == 1 { return true }
+            // IPv4-mapped ::ffff:a.b.c.d
+            if v6.prefix(10).allSatisfy({ $0 == 0 }), v6[10] == 0xFF, v6[11] == 0xFF {
+                return isPrivatePeerAddress(v6.suffix(4).map(String.init).joined(separator: "."))
+            }
+            // fe80::/10 link-local, fc00::/7 unique-local
+            if v6[0] == 0xFE, (v6[1] & 0xC0) == 0x80 { return true }
+            if (v6[0] & 0xFE) == 0xFC { return true }
+            return false
+        }
+        return false
+    }
+
+    private static func ipv4Bytes(_ address: String) -> [UInt8]? {
+        var storage = in_addr()
+        guard inet_pton(AF_INET, address, &storage) == 1 else { return nil }
+        return withUnsafeBytes(of: storage, Array.init)
+    }
+
+    private static func ipv6Bytes(_ address: String) -> [UInt8]? {
+        var storage = in6_addr()
+        guard inet_pton(AF_INET6, address, &storage) == 1 else { return nil }
+        return withUnsafeBytes(of: storage, Array.init)
     }
 
     private func handleWebSocket(_ request: RemoteChatHTTPRequest, on connection: NWConnection) {
@@ -441,9 +598,17 @@ final class RemoteChatServer {
     }
 
     private func send(_ response: RemoteChatHTTPResponse, on connection: NWConnection) {
-        connection.send(content: response.data, completion: .contentProcessed { _ in
-            connection.cancel()
-        })
+        // isComplete + finalMessage lets the TLS layer emit close_notify and
+        // a clean FIN; a bare cancel() after send races it and surfaces on
+        // the client as RST (curl reports 000 despite the body arriving).
+        connection.send(
+            content: response.data,
+            contentContext: .finalMessage,
+            isComplete: true,
+            completion: .contentProcessed { _ in
+                connection.cancel()
+            }
+        )
     }
 
     private func eventsResponse(request: RemoteChatHTTPRequest) -> RemoteChatHTTPResponse {

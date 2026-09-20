@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 未发布
+
+- **文档**：README / README_EN 新增「下载」区块——macOS / Windows（安装包 + 便携版）/ Android / iOS 四端 GitHub Releases 最新版直达链接（iOS 标注未签名 IPA 需 TrollStore/自签）；「纯局域网」表述更新为「局域网 + 跨网直连（IPv6 / 端口映射 + 扫码配对）」，安全提示改为 wss + 配对 token 鉴权说明，原「已知缺口：跨网远程」章节替换为「跨网直连」能力说明。
+
 ## 0.4.0 · acode 收尾整理
 
 发布日期：2026-09-20

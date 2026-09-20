@@ -1,12 +1,16 @@
 package com.codevoke.android.ui.state
 
 import android.app.Application
+import android.os.Build
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
+import com.codevoke.android.data.EndpointStore
+import com.codevoke.android.data.LanDiscoveredHost
+import com.codevoke.android.data.PairedHost
 import com.codevoke.android.data.RemoteCapability
 import com.codevoke.android.data.RemoteChatAttachment
 import com.codevoke.android.data.RemoteChatClient
@@ -21,26 +25,49 @@ import com.codevoke.android.data.RemoteProject
 import com.codevoke.android.data.RemoteQueuedRequest
 import com.codevoke.android.data.RemoteSession
 import com.codevoke.android.data.RemoteStreamingText
+import com.codevoke.android.data.RemoteWanClient
+import com.codevoke.android.data.WanEndpoint
+import com.codevoke.android.data.WanProbeResult
 import com.codevoke.android.data.LanNetworkSelector
 import com.codevoke.android.data.LanSubnetProbe
 import com.codevoke.android.data.applyPatch
 import com.codevoke.android.data.toJson
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import org.json.JSONObject
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import javax.net.SocketFactory
+
+/** 正在输入 6 位配对码的局域网目标。 */
+data class PairTarget(
+    val host: String,
+    val port: Int,
+    val label: String,
+)
 
 data class DeviceUiState(
-    val hosts: List<String> = emptyList(),
+    val hosts: List<LanDiscoveredHost> = emptyList(),
+    val pairedHosts: List<PairedHost> = emptyList(),
     val scanning: Boolean = false,
     val connecting: Boolean = false,
+    val pairing: Boolean = false,
+    val pairTarget: PairTarget? = null,
+    val pairError: String? = null,
     val manualHost: String = "",
     val manualPort: String = "18765",
+    val connectionString: String = "",
     val message: String? = null,
-    val connectedHost: String? = null,
-    val connectedPort: Int = 18765,
+    val connectedHostId: String? = null,
 )
 
 data class ChatUiState(
@@ -92,9 +119,16 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
     var chat by mutableStateOf(ChatUiState())
         private set
     val transportLabel: String
-        get() = if (chat.connectionStatus == "已连接") "局域网" else ""
+        get() = when {
+            chat.connectionStatus != "已连接" -> ""
+            connectedViaLan -> "局域网"
+            else -> "跨网直连"
+        }
 
+    private val endpointStore = EndpointStore(application)
     private val remoteChatClient = RemoteChatClient()
+    /// 当前连接走的是局域网地址还是公网地址（驱动 transportLabel）。
+    private var connectedViaLan = false
     private var snapshot: RemotePanelSnapshot? = null
     private val pendingCommands = mutableListOf<PendingRemoteCommand>()
     private var pendingProjectFocusJob: Job? = null
@@ -118,13 +152,15 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         devices = devices.copy(
             manualHost = prefs.getString(KEY_HOST, "").orEmpty(),
             manualPort = prefs.getInt(KEY_PORT, DEFAULT_PORT).toString(),
+            pairedHosts = endpointStore.list(),
         )
     }
 
-    fun savedLanTarget(): Pair<String, Int>? {
-        val host = prefs.getString(KEY_HOST, null)?.trim().orEmpty()
-        val port = prefs.getInt(KEY_PORT, DEFAULT_PORT)
-        return if (host.isBlank() || port !in 1..65535) null else host to port
+    /** 启动自动连接目标：上次连接的已配对设备，否则第一台配对设备。 */
+    fun autoConnectTarget(): PairedHost? {
+        val hosts = endpointStore.list()
+        val lastId = prefs.getString(KEY_HOST_ID, null)
+        return hosts.firstOrNull { it.hostId == lastId } ?: hosts.firstOrNull()
     }
 
     fun updateManualHost(value: String) {
@@ -135,6 +171,10 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         devices = devices.copy(manualPort = value, message = null)
     }
 
+    fun updateConnectionString(value: String) {
+        devices = devices.copy(connectionString = value, message = null)
+    }
+
     fun scanLanDevices() {
         if (devices.scanning) return
         viewModelScope.launch {
@@ -142,26 +182,168 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             val preferred = devices.manualHost.trim().takeIf { it.isNotBlank() }
             val port = devices.manualPort.trim().toIntOrNull() ?: DEFAULT_PORT
             val found = LanSubnetProbe.discoverHealthHosts(getApplication(), port = port, preferredHost = preferred)
+            // 静默刷新（契约 §6）：扫到的 proto:2 host 若能完成 wss+token 握手，
+            // 即确认为是已配对设备，调 /connect_info 更新其 eps。
+            val matched = silentRefreshPairedHosts(found)
             devices = devices.copy(
-                hosts = found,
+                hosts = found.map { it.copy(pairedHostId = matched[it.address]) },
+                pairedHosts = endpointStore.list(),
                 scanning = false,
                 message = if (found.isEmpty()) "没有发现设备，请确认电脑端已开启连接服务。" else null,
             )
         }
     }
 
-    fun connectManualHost(onConnected: () -> Unit) {
-        val port = devices.manualPort.trim().toIntOrNull() ?: DEFAULT_PORT
-        connectLanHost(devices.manualHost, port, onConnected)
+    private suspend fun silentRefreshPairedHosts(found: List<LanDiscoveredHost>): Map<String, String> {
+        val paired = endpointStore.list()
+        if (paired.isEmpty() || found.isEmpty()) return emptyMap()
+        val wifiFactory = LanNetworkSelector.wifiNetwork(getApplication())?.socketFactory
+        val matched = ConcurrentHashMap<String, String>()
+        coroutineScope {
+            found.map { lanHost ->
+                async {
+                    val endpoint = WanEndpoint(lanHost.address, lanHost.port)
+                    var device: PairedHost? = null
+                    for (candidate in paired) {
+                        val result = try {
+                            RemoteWanClient.probeChat(
+                                endpoint = endpoint,
+                                token = candidate.token,
+                                certFP = candidate.certFP,
+                                socketFactory = wifiFactory,
+                                timeoutMillis = PROBE_TIMEOUT_MS / 2,
+                            )
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (error: Throwable) {
+                            WanProbeResult.Failed
+                        }
+                        if (result == WanProbeResult.Success) {
+                            device = candidate
+                            break
+                        }
+                    }
+                    val matchedDevice = device ?: return@async
+                    matched[lanHost.address] = matchedDevice.hostId
+                    val httpClient = RemoteWanClient.httpClient(matchedDevice.certFP, wifiFactory)
+                    RemoteWanClient.connectInfo(httpClient, endpoint, matchedDevice.token)?.let { info ->
+                        endpointStore.refreshEndpoints(matchedDevice.hostId, info.name, info.eps, reachableVia = endpoint)
+                    }
+                }
+            }.awaitAll()
+        }
+        return matched
     }
 
-    fun connectLanHost(host: String, port: Int, onConnected: () -> Unit) {
-        val cleanHost = host.trim()
-        if (devices.connecting) return
-        if (cleanHost.isBlank() || port !in 1..65535) {
+    // ---- 配对（契约 §6 三个入口：扫码 / 连接串 / 局域网 6 位码）----
+
+    fun openPairDialog(host: String, port: Int, label: String) {
+        val clean = host.trim()
+        if (clean.isBlank() || port !in 1..65535) {
             devices = devices.copy(message = "请输入有效的地址和端口。")
             return
         }
+        devices = devices.copy(
+            pairTarget = PairTarget(clean, port, label.ifBlank { clean }),
+            pairError = null,
+            message = null,
+        )
+    }
+
+    fun openManualPairDialog() {
+        val port = devices.manualPort.trim().toIntOrNull() ?: DEFAULT_PORT
+        openPairDialog(devices.manualHost, port, devices.manualHost.trim())
+    }
+
+    fun dismissPairDialog() {
+        if (devices.pairing) return
+        devices = devices.copy(pairTarget = null, pairError = null)
+    }
+
+    /** 局域网 6 位码配对：POST /pair（仅私网来源）。 */
+    fun submitPairCode(code: String, onConnected: () -> Unit) {
+        val target = devices.pairTarget ?: return
+        val digits = code.trim()
+        if (devices.pairing) return
+        if (digits.length != 6 || digits.any { !it.isDigit() }) {
+            devices = devices.copy(pairError = "请输入电脑端显示的 6 位数字配对码。")
+            return
+        }
+        viewModelScope.launch {
+            devices = devices.copy(pairing = true, pairError = null)
+            val endpoint = WanEndpoint(target.host, target.port)
+            val wifiFactory = LanNetworkSelector.wifiNetwork(getApplication())?.socketFactory
+            val outcome = try {
+                Result.success(
+                    RemoteWanClient.pair(
+                        client = RemoteWanClient.discoveryClient(socketFactory = wifiFactory),
+                        endpoint = endpoint,
+                        code = digits,
+                        deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim().ifBlank { "Android" },
+                    ),
+                )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                Result.failure(error)
+            }
+            outcome.onSuccess { paired ->
+                endpointStore.upsert(paired)
+                prefs.edit().putString(KEY_HOST, target.host).putInt(KEY_PORT, target.port).apply()
+                devices = devices.copy(
+                    pairing = false,
+                    pairTarget = null,
+                    pairedHosts = endpointStore.list(),
+                )
+                connectPairedHost(paired.hostId, onConnected)
+            }.onFailure { error ->
+                devices = devices.copy(
+                    pairing = false,
+                    pairError = userMessage(error, "配对失败，请确认配对码正确且手机与电脑在同一网络。"),
+                )
+            }
+        }
+    }
+
+    /** 扫码 / 手动粘贴连接串：解析 acode://pair?d=<base64url(JSON)>（契约 §4.4）。 */
+    fun pairFromConnectionString(raw: String, onConnected: () -> Unit) {
+        val paired = RemoteWanClient.parsePairLink(raw)
+        if (paired == null) {
+            devices = devices.copy(message = "配对信息无效，请确认二维码或连接串来自电脑端设置页（acode://pair?d=…）。")
+            return
+        }
+        endpointStore.upsert(paired)
+        devices = devices.copy(connectionString = "", pairedHosts = endpointStore.list(), message = null)
+        connectPairedHost(paired.hostId, onConnected)
+    }
+
+    fun connectDiscoveredHost(host: LanDiscoveredHost, onConnected: () -> Unit) {
+        host.pairedHostId?.let { connectPairedHost(it, onConnected) }
+            ?: openPairDialog(host.address, host.port, host.name.ifBlank { host.address })
+    }
+
+    fun forgetPairedHost(hostId: String) {
+        endpointStore.remove(hostId)
+        if (prefs.getString(KEY_HOST_ID, null) == hostId) {
+            prefs.edit().remove(KEY_HOST_ID).apply()
+        }
+        if (devices.connectedHostId == hostId) {
+            disconnectRemote()
+        }
+        devices = devices.copy(pairedHosts = endpointStore.list())
+    }
+
+    /**
+     * 连接已配对设备（契约 §6）：lastGood 先行 + 其余 eps 并行竞速，
+     * 单条 3s 未握手换下；全部失败提示"地址可能已变化"。
+     */
+    fun connectPairedHost(hostId: String, onConnected: () -> Unit) {
+        val device = endpointStore.get(hostId)
+        if (device == null) {
+            devices = devices.copy(message = "设备信息不存在，请重新配对。")
+            return
+        }
+        if (devices.connecting) return
         viewModelScope.launch {
             devices = devices.copy(connecting = true, message = null)
             snapshot = null
@@ -169,19 +351,116 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             autoLoadedFilesProjectId = null
             remoteChatClient.disconnect()
             chat = ChatUiState(connectionStatus = "连接中")
-            val failure = tryEstablishDirectConnection(RemoteChatConfig(macHost = cleanHost, port = port))
-            if (failure == null && isRemoteChatReady()) {
-                prefs.edit().putString(KEY_HOST, cleanHost).putInt(KEY_PORT, port).apply()
-                devices = devices.copy(connecting = false, connectedHost = cleanHost, connectedPort = port)
-                onConnected()
-            } else {
+            val wifiFactory = LanNetworkSelector.wifiNetwork(getApplication())?.socketFactory
+            val ordered = (listOfNotNull(device.lastGood) + device.eps).distinct()
+            if (ordered.isEmpty()) {
                 devices = devices.copy(
                     connecting = false,
-                    message = userMessage(failure ?: IllegalStateException("局域网连接失败。"), "局域网连接失败。"),
+                    message = "该设备没有可用地址，请回到同一局域网刷新或重新配对。",
+                )
+                chat = chat.copy(connectionStatus = "未连接")
+                return@launch
+            }
+            val race = raceEndpoints(device, ordered, wifiFactory)
+            val winner = race.winner
+            if (winner == null) {
+                val failure = when {
+                    race.sawAuthFailure || race.sawPinMismatch ->
+                        "配对信息已失效或电脑证书已更换，请删除该设备后重新配对。"
+                    else ->
+                        "无法连接到 ${device.name}，地址可能已变化。请回到同一局域网刷新，或重新扫码配对。"
+                }
+                devices = devices.copy(connecting = false, message = failure)
+                chat = chat.copy(connectionStatus = "未连接", lastError = failure)
+                return@launch
+            }
+            endpointStore.markLastGood(hostId, winner)
+            connectedViaLan = winner.isLanAddress
+            val config = RemoteChatConfig(
+                macHost = winner.address,
+                port = winner.port,
+                token = device.token,
+                certFP = device.certFP,
+            )
+            connectRemoteChat(
+                config,
+                client = RemoteWanClient.wsClient(device.certFP, socketFactoryFor(winner, wifiFactory)),
+            )
+            try {
+                waitForDirectRemoteChatReady()
+                prefs.edit().putString(KEY_HOST_ID, hostId).apply()
+                devices = devices.copy(
+                    connecting = false,
+                    connectedHostId = hostId,
+                    pairedHosts = endpointStore.list(),
+                )
+                onConnected()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                devices = devices.copy(
+                    connecting = false,
+                    message = userMessage(error, "连接失败，请重试。"),
                 )
             }
         }
     }
+
+    private data class EndpointRace(
+        val winner: WanEndpoint?,
+        val sawAuthFailure: Boolean,
+        val sawPinMismatch: Boolean,
+    )
+
+    private suspend fun raceEndpoints(
+        device: PairedHost,
+        eps: List<WanEndpoint>,
+        wifiFactory: SocketFactory?,
+    ): EndpointRace = coroutineScope {
+        val winner = CompletableDeferred<WanEndpoint>()
+        val sawAuthFailure = AtomicBoolean()
+        val sawPinMismatch = AtomicBoolean()
+        eps.forEach { endpoint ->
+            launch {
+                val result = try {
+                    RemoteWanClient.probeChat(
+                        endpoint = endpoint,
+                        token = device.token,
+                        certFP = device.certFP,
+                        socketFactory = socketFactoryFor(endpoint, wifiFactory),
+                        timeoutMillis = PROBE_TIMEOUT_MS,
+                    )
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    WanProbeResult.Failed
+                }
+                when (result) {
+                    WanProbeResult.Success -> winner.complete(endpoint)
+                    WanProbeResult.AuthFailed -> sawAuthFailure.set(true)
+                    WanProbeResult.PinMismatch -> sawPinMismatch.set(true)
+                    WanProbeResult.Failed -> Unit
+                }
+            }
+        }
+        val first = withTimeoutOrNull(PROBE_TIMEOUT_MS + 800) { winner.await() }
+        coroutineContext.cancelChildren()
+        EndpointRace(first, sawAuthFailure.get(), sawPinMismatch.get())
+    }
+
+    /** LAN 地址走 Wi-Fi 网卡绑定的 socket；公网地址用系统默认路由。 */
+    private fun socketFactoryFor(endpoint: WanEndpoint, wifiFactory: SocketFactory?): SocketFactory? =
+        if (endpoint.isLanAddress) wifiFactory else null
+
+    private fun socketFactoryForHost(host: String): SocketFactory? =
+        if (LanNetworkSelector.isPrivateIPv4(host) || host.startsWith("fe80:", ignoreCase = true)) {
+            LanNetworkSelector.wifiNetwork(getApplication())?.socketFactory
+        } else {
+            null
+        }
+
+    private fun httpClientFor(config: RemoteChatConfig): OkHttpClient =
+        RemoteWanClient.httpClient(config.certFP, socketFactoryForHost(config.macHost))
 
     fun disconnectRemote() {
         remoteChatClient.disconnect()
@@ -189,7 +468,8 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         cancelCosmeticPublish()
         autoLoadedFilesProjectId = null
         pendingCommands.clear()
-        devices = devices.copy(connectedHost = null)
+        connectedViaLan = false
+        devices = devices.copy(connectedHostId = null)
         chat = ChatUiState()
     }
 
@@ -202,7 +482,8 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             chat = chat.copy(isRefreshing = true, lastError = null)
             if (config.supportsDirectHttp) {
-                val healthOk = runCatching { RemoteLanClient(config, lanBoundClient()).health() }.getOrDefault(false)
+                val healthOk = runCatching { RemoteLanClient(config, httpClientFor(config)).health() }.getOrDefault(false)
+                // client=null → RemoteChatClient 沿用首次连接已 pin 住的 activeClient。
                 if (!healthOk || chat.connectionStatus != "已连接") connectRemoteChat(config)
                 sendRemoteCommand("requestSnapshot", sessionId = chat.selectedSessionId)
             } else {
@@ -345,7 +626,7 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         val selectedSessionId = chat.selectedSessionId
         viewModelScope.launch {
             beginAttachmentUpload()
-            runCatching { RemoteLanClient(config).uploadAttachment(safeName, data) }
+            runCatching { RemoteLanClient(config, httpClientFor(config)).uploadAttachment(safeName, data) }
                 .onSuccess { uploaded ->
                     if (chat.selectedProjectId != selectedProjectId || chat.selectedSessionId != selectedSessionId) {
                         finishAttachmentUpload()
@@ -464,16 +745,11 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
 
     private fun connectRemoteChat(config: RemoteChatConfig, client: OkHttpClient? = null) {
         chat = chat.copy(config = config, connectionStatus = "连接中", lastError = null)
-        val lanClient = client ?: if (config.isPrivateLanConfig()) {
-            LanNetworkSelector.wifiBoundClient(getApplication())
-        } else {
-            null
-        }
         remoteChatClient.connect(
             config = config,
             focusedSessionId = chat.selectedSessionId,
             lastRevision = snapshot?.revision,
-            client = lanClient,
+            client = client,
         )
     }
 
@@ -633,7 +909,7 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             return
         }
         chat = chat.copy(isLoadingFiles = true, fileError = null)
-        runCatching { RemoteLanClient(config).projectFiles(project.id, path) }
+        runCatching { RemoteLanClient(config, httpClientFor(config)).projectFiles(project.id, path) }
             .onSuccess {
                 chat = chat.copy(
                     files = it.entries,
@@ -697,8 +973,8 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             if (remoteChatClient.isReady || remoteChatClient.awaitReady(100)) return
         }
         remoteChatClient.disconnect()
-        chat = chat.copy(connectionStatus = "未连接", lastError = "局域网连接通道建立超时，请确认电脑端在线后重试。")
-        throw IllegalStateException("局域网连接通道建立超时，请确认电脑端在线后重试。")
+        chat = chat.copy(connectionStatus = "未连接", lastError = "连接通道建立超时，请确认电脑端在线后重试。")
+        throw IllegalStateException("连接通道建立超时，请确认电脑端在线后重试。")
     }
 
     private suspend fun waitForSnapshotRevisionAfter(previousRevision: Int) {
@@ -712,105 +988,14 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         return error.localizedMessage?.takeIf { it.isNotBlank() } ?: fallback
     }
 
-    private fun isRemoteChatReady(): Boolean =
-        chat.connectionStatus == "已连接" || remoteChatClient.isReady
-
-    private fun RemoteChatConfig.isPrivateLanConfig(): Boolean =
-        supportsDirectHttp && isPrivateIPv4Host(macHost)
-
-    private fun isPrivateIPv4Host(host: String): Boolean {
-        val octets = host.trim().split(".").mapNotNull { it.toIntOrNull() }
-        if (octets.size != 4 || octets.any { it !in 0..255 }) return false
-        return when (octets[0]) {
-            10 -> true
-            172 -> octets[1] in 16..31
-            192 -> octets[1] == 168
-            else -> false
-        }
-    }
-
-    private suspend fun tryEstablishDirectConnection(config: RemoteChatConfig): Throwable? {
-        val app = getApplication<Application>()
-        var directConfig = config
-        val clients = LanNetworkSelector.lanClientsForAttempt(app)
-        val wifiSubnet = LanNetworkSelector.wifiSubnetPrefix(app)
-        val offeredSubnet = directConfig.macHost.split(".").take(3).joinToString(".")
-        if (
-            wifiSubnet != null &&
-            directConfig.isPrivateLanConfig() &&
-            offeredSubnet != wifiSubnet
-        ) {
-            LanSubnetProbe.discoverHealthHost(
-                context = app,
-                port = directConfig.port,
-                preferredHost = LanNetworkSelector.localWifiIPv4(app),
-            )?.let { discoveredHost ->
-                directConfig = directConfig.copy(macHost = discoveredHost)
-            }
-        }
-
-        var healthClient: OkHttpClient? = null
-        for (client in clients) {
-            if (runCatching { RemoteLanClient(directConfig, client).health() }.getOrDefault(false)) {
-                healthClient = client
-                break
-            }
-        }
-        if (healthClient == null && directConfig.isPrivateLanConfig()) {
-            val discoveredHost = LanSubnetProbe.discoverHealthHost(
-                context = app,
-                port = directConfig.port,
-                preferredHost = directConfig.macHost,
-            )
-            if (discoveredHost != null) {
-                directConfig = directConfig.copy(macHost = discoveredHost)
-                for (client in clients) {
-                    if (runCatching { RemoteLanClient(directConfig, client).health() }.getOrDefault(false)) {
-                        healthClient = client
-                        break
-                    }
-                }
-            }
-        }
-        if (healthClient == null) {
-            val failure = IllegalStateException(
-                "无法访问电脑地址 ${directConfig.macHost}:${directConfig.port}，请确认手机与电脑在同一 WiFi。",
-            )
-            chat = chat.copy(connectionStatus = "未连接", lastError = failure.localizedMessage)
-            return failure
-        }
-
-        val wsClients = buildList {
-            add(healthClient)
-            addAll(clients.filter { it !== healthClient })
-        }
-        var lastError: Throwable? = null
-        for (wsClient in wsClients) {
-            remoteChatClient.disconnect()
-            chat = chat.copy(config = directConfig, connectionStatus = "连接中", lastError = null)
-            connectRemoteChat(directConfig, client = wsClient)
-            try {
-                waitForDirectRemoteChatReady()
-                return null
-            } catch (error: Throwable) {
-                lastError = error
-                remoteChatClient.disconnect()
-            }
-        }
-        val failure = lastError ?: IllegalStateException("局域网连接失败。")
-        chat = chat.copy(connectionStatus = "未连接", lastError = userMessage(failure, "局域网连接失败。"))
-        return failure
-    }
-
-    private fun lanBoundClient(): OkHttpClient =
-        LanNetworkSelector.wifiBoundClient(getApplication())
-            ?: LanNetworkSelector.defaultLanClient()
-
     private companion object {
         const val PREFS_NAME = "codevoke.lan"
         const val KEY_HOST = "host"
         const val KEY_PORT = "port"
+        const val KEY_HOST_ID = "lastHostId"
         const val DEFAULT_PORT = 18765
+        /// 契约 §6：单条 endpoint 3s 未握手即换下一条。
+        const val PROBE_TIMEOUT_MS = 3000L
         const val COSMETIC_PUBLISH_DELAY_MS = 80L
     }
 }

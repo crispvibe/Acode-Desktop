@@ -7,6 +7,70 @@ struct RemoteHealthDTO: Codable {
     let bindLAN: Bool
     let port: UInt16
     let authRequired: Bool
+    /// Wire contract §4.2: `proto:2` marks an authenticated (wss + token) server.
+    let proto: Int
+    /// `pair:true` — `/pair` pairing endpoint is available.
+    let pair: Bool
+
+    init(ok: Bool, name: String, version: Int, bindLAN: Bool, port: UInt16, authRequired: Bool, proto: Int, pair: Bool) {
+        self.ok = ok
+        self.name = name
+        self.version = version
+        self.bindLAN = bindLAN
+        self.port = port
+        self.authRequired = authRequired
+        self.proto = proto
+        self.pair = pair
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try c.decode(Bool.self, forKey: .ok)
+        name = try c.decode(String.self, forKey: .name)
+        version = try c.decode(Int.self, forKey: .version)
+        bindLAN = try c.decode(Bool.self, forKey: .bindLAN)
+        port = try c.decode(UInt16.self, forKey: .port)
+        authRequired = try c.decode(Bool.self, forKey: .authRequired)
+        proto = try c.decodeIfPresent(Int.self, forKey: .proto) ?? 1
+        pair = try c.decodeIfPresent(Bool.self, forKey: .pair) ?? false
+    }
+}
+
+/// `POST /pair` request body (spec §4.2).
+struct RemotePairRequestDTO: Codable {
+    var code: String
+    var deviceName: String
+}
+
+/// `POST /pair` 200 response (spec §4.2).
+struct RemotePairResponseDTO: Codable {
+    var token: String
+    var fp: String
+    var name: String
+    var eps: [RemoteEndpointDTO]
+}
+
+/// `GET /connect_info` response (spec §4.2).
+struct RemoteConnectInfoDTO: Codable {
+    var name: String
+    var eps: [RemoteEndpointDTO]
+}
+
+/// One endpoint entry `{a, p}` shared by `/pair`, `/connect_info` and the QR payload.
+struct RemoteEndpointDTO: Codable, Equatable {
+    var a: String
+    var p: UInt16
+}
+
+/// Host display name used in `/health`, `/pair`, `/connect_info` and QR `n`.
+enum RemoteHostInfo {
+    static var displayName: String {
+        if let localized = Host.current().localizedName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !localized.isEmpty {
+            return localized
+        }
+        return ProcessInfo.processInfo.hostName
+    }
 }
 
 struct RemoteProjectDTO: Codable {

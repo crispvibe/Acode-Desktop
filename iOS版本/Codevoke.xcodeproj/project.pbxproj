@@ -37,6 +37,13 @@
 			AC1000000000000000000039 /* RemoteUserFacingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000039 /* RemoteUserFacingText.swift */; };
 			AC1000000000000000000048 /* LanNetworkSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000048 /* LanNetworkSelector.swift */; };
 			AC1000000000000000000049 /* LanSubnetProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000049 /* LanSubnetProbe.swift */; };
+			AC1000000000000000000050 /* RemoteWanModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000050 /* RemoteWanModels.swift */; };
+			AC1000000000000000000051 /* EndpointStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000051 /* EndpointStore.swift */; };
+			AC1000000000000000000052 /* PinnedURLSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000052 /* PinnedURLSession.swift */; };
+			AC1000000000000000000053 /* RemotePairingClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000053 /* RemotePairingClient.swift */; };
+			AC1000000000000000000054 /* RemoteWanTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000054 /* RemoteWanTransport.swift */; };
+			AC1000000000000000000055 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000055 /* QRScannerView.swift */; };
+			AC1000000000000000000056 /* DevicePairingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2000000000000000000056 /* DevicePairingViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -72,6 +79,13 @@
 			AC2000000000000000000039 /* RemoteUserFacingText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteUserFacingText.swift; sourceTree = "<group>"; };
 			AC2000000000000000000048 /* LanNetworkSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanNetworkSelector.swift; sourceTree = "<group>"; };
 			AC2000000000000000000049 /* LanSubnetProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanSubnetProbe.swift; sourceTree = "<group>"; };
+			AC2000000000000000000050 /* RemoteWanModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteWanModels.swift; sourceTree = "<group>"; };
+			AC2000000000000000000051 /* EndpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointStore.swift; sourceTree = "<group>"; };
+			AC2000000000000000000052 /* PinnedURLSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedURLSession.swift; sourceTree = "<group>"; };
+			AC2000000000000000000053 /* RemotePairingClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePairingClient.swift; sourceTree = "<group>"; };
+			AC2000000000000000000054 /* RemoteWanTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteWanTransport.swift; sourceTree = "<group>"; };
+			AC2000000000000000000055 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
+			AC2000000000000000000056 /* DevicePairingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePairingViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -152,6 +166,11 @@
 					AC2000000000000000000036 /* RemoteTransportFrameCodec.swift */,
 					AC2000000000000000000048 /* LanNetworkSelector.swift */,
 					AC2000000000000000000049 /* LanSubnetProbe.swift */,
+					AC2000000000000000000050 /* RemoteWanModels.swift */,
+					AC2000000000000000000051 /* EndpointStore.swift */,
+					AC2000000000000000000052 /* PinnedURLSession.swift */,
+					AC2000000000000000000053 /* RemotePairingClient.swift */,
+					AC2000000000000000000054 /* RemoteWanTransport.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -179,6 +198,8 @@
 				AC2000000000000000000012 /* SettingsView.swift */,
 				AC2000000000000000000013 /* VisualStyle.swift */,
 					AC2000000000000000000033 /* DeviceListView.swift */,
+					AC2000000000000000000055 /* QRScannerView.swift */,
+					AC2000000000000000000056 /* DevicePairingViews.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -308,6 +329,13 @@
 				AC1000000000000000000042 /* CodevokeLocalization.swift in Sources */,
 				AC1000000000000000000048 /* LanNetworkSelector.swift in Sources */,
 				AC1000000000000000000049 /* LanSubnetProbe.swift in Sources */,
+				AC1000000000000000000050 /* RemoteWanModels.swift in Sources */,
+				AC1000000000000000000051 /* EndpointStore.swift in Sources */,
+				AC1000000000000000000052 /* PinnedURLSession.swift in Sources */,
+				AC1000000000000000000053 /* RemotePairingClient.swift in Sources */,
+				AC1000000000000000000054 /* RemoteWanTransport.swift in Sources */,
+				AC1000000000000000000055 /* QRScannerView.swift in Sources */,
+				AC1000000000000000000056 /* DevicePairingViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

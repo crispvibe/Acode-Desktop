@@ -25,6 +25,7 @@ import {
   remoteHostSetEnabledRequestSchema,
   remoteHostPushSnapshotRequestSchema,
   remoteHostCommandResultSchema,
+  remoteHostRevokeDeviceRequestSchema,
   type RemoteHostApplyCommandRequest,
   type RemoteHostStatus
 } from "../shared/ipc.js";
@@ -368,6 +369,15 @@ function registerIpcHandlers(): void {
     const request = remoteHostCommandResultSchema.parse(rawRequest);
     remoteHostController.resolveCommandResult(request);
   });
+
+  ipcMain.handle(ipcChannels.remoteHostGetPairing, () => remoteHostController.getPairingInfo());
+
+  ipcMain.handle(ipcChannels.remoteHostRevokeDevice, async (_event, rawRequest: unknown) => {
+    const request = remoteHostRevokeDeviceRequestSchema.parse(rawRequest);
+    return remoteHostController.revokeDevice(request.deviceId);
+  });
+
+  ipcMain.handle(ipcChannels.remoteHostRefreshEndpoints, () => remoteHostController.refreshEndpoints());
 
   registerEditorIpcHandlers({ projectStore, settingsService });
   registerChatIpcHandlers(chatSessionStore, profileService);

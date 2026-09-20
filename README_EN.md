@@ -4,7 +4,7 @@
 
 > Mobile AI coding — put Claude Code / Codex in your pocket.
 
-An open-source, LAN-only AI coding workbench: run Claude Code / Codex conversations on your computer, then drive them from your phone over the same Wi-Fi. **No accounts, no backend, no cloud** — just open it and go.
+An open-source AI coding workbench with LAN + cross-network direct connect: run Claude Code / Codex conversations on your computer, then drive them from your phone — auto-discovery on the same Wi-Fi, QR pairing across networks. **No accounts, no backend, no cloud** — just open it and go.
 
 Repo: <https://github.com/crispvibe/Acode-Desktop> · License: [PolyForm Noncommercial 1.0.0](LICENSE) (free for personal use, no commercial use)
 
@@ -13,10 +13,21 @@ Repo: <https://github.com/crispvibe/Acode-Desktop> · License: [PolyForm Noncomm
   <img src="文档/images/mobile-thread.png" alt="acode mobile" width="31%" />
 </p>
 
+## Download
+
+| Platform | Package (direct link to the latest GitHub Release) |
+|----------|----------------------------------------------------|
+| macOS | [acode-macos-universal.dmg](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-macos-universal.dmg) |
+| Windows | [Installer](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-Setup-0.1.0-x64.exe) · [Portable](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-Portable-0.1.0-x64.exe) |
+| Android | [acode-android-debug.apk](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-android-debug.apk) |
+| iOS | [acode-ios-unsigned.ipa](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-ios-unsigned.ipa) (unsigned IPA — install via TrollStore or sideload with your own certificate) |
+
+All builds are on the [latest Releases page](https://github.com/crispvibe/Acode-Desktop/releases/latest); Windows filenames carry a version number — if a direct link stops working, grab the package there.
+
 ## What it does
 
 - 📱 **Drive desktop AI from your phone**: send tasks, watch progress, approve permissions, answer the agent's questions — keep AI coding while you're away from the desk
-- 🔌 **Zero-config connect**: auto-discovers the host on the same Wi-Fi; or enter `IP:18765` manually
+- 🔌 **Zero-config connect**: auto-discovers the host on the same Wi-Fi; or enter `IP:18765` manually — cross-network direct connect (IPv6 / port mapping + QR pairing) is supported
 - 🛠 **See every step**: task lists, file reads, search, diffs, terminal commands, sub-agents — each rendered as its own card
 - ⚡ **All mainstream CLIs**: Claude Code, Codex, Cursor Agent, Gemini, Qwen Code, Copilot, Kimi, Antigravity, Kiro — switch freely; adjust model and reasoning effort mid-conversation
 - 🔓 **No account system**: no sign-up, no login, nothing goes through the cloud
@@ -48,21 +59,21 @@ cd 安卓版本 && ./gradlew assembleDebug
 open "iOS版本/Codevoke.xcodeproj"
 ```
 
-**Connect**: join the same Wi-Fi as the computer — the app auto-scans the LAN for acode hosts. If discovery fails, enter the computer's `IP:18765` manually.
+**Connect**: join the same Wi-Fi as the computer — the app auto-scans the LAN for acode hosts. If discovery fails, enter the computer's `IP:18765` manually. On a different network, scan the QR code (or paste the connection string) shown in the host's settings to pair and connect directly.
 
 ## Security notice
 
-> ⚠️ **Connections have no authentication** — any device on the same LAN can connect and drive your CLI. Only use it on trusted networks, and **never expose port 18765 to the public internet**.
+> ⚠️ Connections use **wss (self-signed TLS + certificate pinning) with paired-token auth** — the same scheme on LAN and WAN. Pairing codes/QR are only shown on the host, and paired tokens can be revoked from settings. Still use it in environments you trust, and turn remote access off in settings when you don't need it.
 
-## Known gap: remote access over the internet (NAT traversal)
+## Cross-network direct connect
 
-Only same-Wi-Fi LAN direct connection works today. Cross-network remote access (NAT traversal / intranet tunneling) was half-built and never finished — it's the biggest missing piece of this project.
+Beyond your Wi-Fi, the phone still connects **directly to the computer — no third-party servers**: the host publishes a global IPv6 address or asks the router for a port mapping (NAT-PMP / UPnP); the phone pairs by scanning the QR code in host settings (or pasting the connection string). On the same LAN, a 6-digit pairing code works too.
 
-If you know P2P / NAT traversal / tunneling, contributions are very welcome: the protocol layer and module layout are in place (`共享代码/`, the `RemoteChat` modules on each platform) — send a PR.
+If neither side has IPv6 nor a public IPv4, direct connect is impossible and the app says so. Design details: `文档/remote-chat-wan-direct.md`.
 
 ## Repository layout
 
-- `Mac版本/` — macOS host (SwiftUI + LAN server)
+- `Mac版本/` — macOS host (SwiftUI + direct-connect server)
 - `Windows版本/` — Windows host (Electron + React + TS)
 - `iOS版本/` — iOS client (SwiftUI)
 - `安卓版本/` — Android client (Kotlin + Compose)

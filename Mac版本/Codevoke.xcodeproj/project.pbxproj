@@ -53,8 +53,14 @@
 		B00000000000000000000048 /* PanelStateBroadcaster.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000048 /* PanelStateBroadcaster.swift */; };
 		B00000000000000000000049 /* RemoteChatCommandRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000049 /* RemoteChatCommandRouter.swift */; };
 		B0000000000000000000004A /* PanelStateBroadcasterAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000004A /* PanelStateBroadcasterAdapter.swift */; };
+		B00000000000000000000051 /* RemoteHostIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000051 /* RemoteHostIdentity.swift */; };
+		B00000000000000000000052 /* RemoteAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000052 /* RemoteAuthService.swift */; };
+		B00000000000000000000053 /* RemotePairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000053 /* RemotePairingService.swift */; };
+		B00000000000000000000054 /* WanEndpointPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000054 /* WanEndpointPublisher.swift */; };
 		CHC000000000000000000001 /* ChatCore in Frameworks */ = {isa = PBXBuildFile; productRef = CHC000000000000000000003 /* ChatCore */; };
 		CHU000000000000000000001 /* ChatUI in Frameworks */ = {isa = PBXBuildFile; productRef = CHU000000000000000000003 /* ChatUI */; };
+		X50900000000000000000001 /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = SPM0000000000000000000003 /* X509 */; };
+		ASN1000000000000000000001 /* SwiftASN1 in Frameworks */ = {isa = PBXBuildFile; productRef = SPM0000000000000000000004 /* SwiftASN1 */; };
 
 	/* End PBXBuildFile section */
 
@@ -108,6 +114,10 @@
 		F00000000000000000000048 /* PanelStateBroadcaster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelStateBroadcaster.swift; sourceTree = "<group>"; };
 		F00000000000000000000049 /* RemoteChatCommandRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteChatCommandRouter.swift; sourceTree = "<group>"; };
 		F0000000000000000000004A /* PanelStateBroadcasterAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelStateBroadcasterAdapter.swift; sourceTree = "<group>"; };
+		F00000000000000000000051 /* RemoteHostIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteHostIdentity.swift; sourceTree = "<group>"; };
+		F00000000000000000000052 /* RemoteAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAuthService.swift; sourceTree = "<group>"; };
+		F00000000000000000000053 /* RemotePairingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePairingService.swift; sourceTree = "<group>"; };
+		F00000000000000000000054 /* WanEndpointPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WanEndpointPublisher.swift; sourceTree = "<group>"; };
 
 			A20000000000000000000021 /* CodevokeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CodevokeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 	/* End PBXFileReference section */
@@ -130,6 +140,8 @@
 			files = (
 				CHC000000000000000000001 /* ChatCore in Frameworks */,
 				CHU000000000000000000001 /* ChatUI in Frameworks */,
+				X50900000000000000000001 /* X509 in Frameworks */,
+				ASN1000000000000000000001 /* SwiftASN1 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -269,6 +281,10 @@
 				F00000000000000000000048 /* PanelStateBroadcaster.swift */,
 				F00000000000000000000049 /* RemoteChatCommandRouter.swift */,
 				F0000000000000000000004A /* PanelStateBroadcasterAdapter.swift */,
+				F00000000000000000000051 /* RemoteHostIdentity.swift */,
+				F00000000000000000000052 /* RemoteAuthService.swift */,
+				F00000000000000000000053 /* RemotePairingService.swift */,
+				F00000000000000000000054 /* WanEndpointPublisher.swift */,
 			);
 			path = RemoteChat;
 			sourceTree = "<group>";
@@ -300,6 +316,8 @@
 			packageProductDependencies = (
 				CHC000000000000000000003 /* ChatCore */,
 				CHU000000000000000000003 /* ChatUI */,
+				SPM0000000000000000000003 /* X509 */,
+				SPM0000000000000000000004 /* SwiftASN1 */,
 			);
 			productName = Codevoke;
 			productReference = F00000000000000000000023 /* Codevoke.app */;
@@ -357,6 +375,8 @@
 			packageReferences = (
 				CHC000000000000000000002 /* XCLocalSwiftPackageReference "../共享代码/ChatCore" */,
 				CHU000000000000000000002 /* XCLocalSwiftPackageReference "../共享代码/ChatUI" */,
+				SPM0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-certificates" */,
+				SPM0000000000000000000002 /* XCRemoteSwiftPackageReference "swift-asn1" */,
 			);
 			productRefGroup = G00000000000000000000008 /* Products */;
 			projectDirPath = "";
@@ -437,6 +457,10 @@
 				B00000000000000000000048 /* PanelStateBroadcaster.swift in Sources */,
 				B00000000000000000000049 /* RemoteChatCommandRouter.swift in Sources */,
 				B0000000000000000000004A /* PanelStateBroadcasterAdapter.swift in Sources */,
+				B00000000000000000000051 /* RemoteHostIdentity.swift in Sources */,
+				B00000000000000000000052 /* RemoteAuthService.swift in Sources */,
+				B00000000000000000000053 /* RemotePairingService.swift in Sources */,
+				B00000000000000000000054 /* WanEndpointPublisher.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -714,6 +738,25 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		SPM0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-certificates" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-certificates";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.20.0;
+			};
+		};
+		SPM0000000000000000000002 /* XCRemoteSwiftPackageReference "swift-asn1" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-asn1";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.7.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		CHC000000000000000000003 /* ChatCore */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -724,6 +767,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = CHU000000000000000000002 /* XCLocalSwiftPackageReference "../共享代码/ChatUI" */;
 			productName = ChatUI;
+		};
+		SPM0000000000000000000003 /* X509 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = SPM0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-certificates" */;
+			productName = X509;
+		};
+		SPM0000000000000000000004 /* SwiftASN1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = SPM0000000000000000000002 /* XCRemoteSwiftPackageReference "swift-asn1" */;
+			productName = SwiftASN1;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

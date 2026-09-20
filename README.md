@@ -4,7 +4,7 @@
 
 > 手机 AI 编程——把 Claude Code / Codex 装进口袋。
 
-开源的局域网 AI 编程工作台：在电脑上跑 Claude Code / Codex 对话，同一 Wi-Fi 下用手机直接连上去指挥它干活。**无账号、无后端、无云端**，打开就能用。
+开源的局域网 + 跨网直连 AI 编程工作台：在电脑上跑 Claude Code / Codex 对话，用手机直接连上去指挥它干活——同一 Wi-Fi 自动发现，跨网扫码配对。**无账号、无后端、无云端**，打开就能用。
 
 仓库：<https://github.com/crispvibe/Acode-Desktop> · QQ 群：[Code 开源技术交流群](https://qm.qq.com/q/yauE2vZ73y) · License：[PolyForm Noncommercial 1.0.0](LICENSE)（个人免费，禁止商用）
 
@@ -13,10 +13,21 @@
   <img src="文档/images/mobile-thread.png" alt="acode 手机端" width="31%" />
 </p>
 
+## 下载
+
+| 平台 | 安装包（GitHub Releases 最新版直达） |
+|------|-----------------------------------|
+| macOS | [acode-macos-universal.dmg](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-macos-universal.dmg) |
+| Windows | [安装包](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-Setup-0.1.0-x64.exe) · [便携版](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-Portable-0.1.0-x64.exe) |
+| Android | [acode-android-debug.apk](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-android-debug.apk) |
+| iOS | [acode-ios-unsigned.ipa](https://github.com/crispvibe/Acode-Desktop/releases/latest/download/acode-ios-unsigned.ipa)（未签名 IPA，需 TrollStore 或自签安装） |
+
+全部产物见 [Releases 最新页](https://github.com/crispvibe/Acode-Desktop/releases/latest)；Windows 包文件名带版本号，直达链接失效时到该页下载。
+
 ## 它能干什么
 
 - 📱 **手机指挥电脑里的 AI**：发任务、看进度、批权限、回答 AI 的提问，人不在电脑前也能让 AI 继续写代码
-- 🔌 **零配置连接**：同一 Wi-Fi 下自动发现电脑，点击即连；也可以手动输入 `IP:18765`
+- 🔌 **零配置连接**：同一 Wi-Fi 下自动发现电脑，点击即连；也可以手动输入 `IP:18765`；跨网直连（IPv6 / 端口映射 + 扫码配对）已支持
 - 🛠 **每一步都看得见**：任务清单、读文件、搜索、diff、终端命令、子代理，全部渲染成对应的卡片
 - ⚡ **主流 CLI 全接入**：Claude Code、Codex、Cursor Agent、Gemini、Qwen Code、Copilot、Kimi、Antigravity、Kiro——想用哪个切哪个，模型和推理强度在对话里随手调
 - 🔓 **没有账号体系**：不注册、不登录、不过云，打开就完事
@@ -48,21 +59,21 @@ cd 安卓版本 && ./gradlew assembleDebug
 open "iOS版本/Codevoke.xcodeproj"
 ```
 
-**连接**：手机和电脑连同一个 Wi-Fi，App 会自动扫描局域网里的 acode；扫不到就在连接页手动输入电脑的 `IP:18765`。
+**连接**：手机和电脑连同一个 Wi-Fi，App 会自动扫描局域网里的 acode；扫不到就在连接页手动输入电脑的 `IP:18765`。不在同一网络时，在电脑端设置页调出二维码/连接串，手机扫码或粘贴配对即可跨网直连。
 
 ## 安全提示
 
-> ⚠️ **连接没有任何鉴权**——同一局域网里的任何设备都能连上你的电脑并驱动 CLI。只在可信网络下使用，**不要把 18765 端口暴露到公网**。
+> ⚠️ 连接走 **wss（自签 TLS + 证书指纹校验）+ 配对 token 鉴权**，局域网与跨网同一套机制；配对码/二维码只在电脑端出示，已配对的 token 可在设置页吊销。仍建议只在可信环境使用，不用远程连接时在设置里关掉即可。
 
-## 已知缺口：跨网远程（内网透传）
+## 跨网直连
 
-目前只支持**同一 Wi-Fi 下的局域网直连**。跨网远程访问（NAT 穿透 / 内网透传）之前只做了一半，还没做成功——这是这个项目现在最大的短板。
+同一 Wi-Fi 之外也能直连，**不经过任何第三方服务器**：电脑端枚举全球 IPv6、或用 NAT-PMP / UPnP 让路由器自动映射端口；手机扫电脑端设置页的二维码（或粘贴连接串）完成配对，局域网内也可以输入 6 位数字码配对。
 
-如果你是懂 P2P / NAT 穿透 / 内网透传的开发者，欢迎来补齐它：协议层和目录结构都在（`共享代码/`、各端 `RemoteChat` 模块），改完提 PR 就行。
+两端都没有 IPv6 且没有公网 IPv4 时无法直连，App 会明确提示。方案细节见 `文档/remote-chat-wan-direct.md`。
 
 ## 目录结构
 
-- `Mac版本/` —— macOS 电脑端（SwiftUI + 局域网服务）
+- `Mac版本/` —— macOS 电脑端（SwiftUI + 直连服务）
 - `Windows版本/` —— Windows 电脑端（Electron + React + TS）
 - `iOS版本/` —— iOS 客户端（SwiftUI）
 - `安卓版本/` —— Android 客户端（Kotlin + Compose）

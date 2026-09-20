@@ -54,13 +54,17 @@ struct RemoteChatRouter {
             guard request.method == "GET" else {
                 return .error("method_not_allowed", message: "当前请求方式不支持。", statusCode: 405, reasonPhrase: "Method Not Allowed")
             }
+            // Wire contract §4.2: proto:2 marks the authenticated (wss+token)
+            // server; pair:true advertises the `/pair` endpoint.
             return .json(RemoteHealthDTO(
                 ok: true,
-                name: "acode Remote Chat",
+                name: RemoteHostInfo.displayName,
                 version: 1,
                 bindLAN: configuration.bindLAN,
                 port: configuration.port,
-                authRequired: false
+                authRequired: true,
+                proto: 2,
+                pair: true
             ))
         }
 

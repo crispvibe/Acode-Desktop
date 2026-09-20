@@ -26,6 +26,10 @@ class RemoteLanClient(
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
+    /** 契约 §4.2：除 /health、/pair 外所有 HTTP 端点要求 Bearer 鉴权。 */
+    private fun Request.Builder.withAuth(): Request.Builder =
+        if (config.token.isNotBlank()) header("Authorization", "Bearer ${config.token}") else this
+
     suspend fun health(): Boolean = withContext(Dispatchers.IO) {
         if (!config.supportsDirectHttp) return@withContext false
         val request = Request.Builder().url("${config.baseUrl}/health").build()
@@ -40,6 +44,7 @@ class RemoteLanClient(
         val request = Request.Builder()
             .url("${config.baseUrl}/attachments")
             .post(payload.toString().toRequestBody(jsonMediaType))
+            .withAuth()
             .build()
         client.newCall(request).execute().use { response ->
             val raw = response.body?.string().orEmpty()
@@ -56,6 +61,7 @@ class RemoteLanClient(
         val encoded = URLEncoder.encode(path, "UTF-8")
         val request = Request.Builder()
             .url("${config.baseUrl}/projects/$projectId/files?path=$encoded")
+            .withAuth()
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw RemoteApiException("文件列表加载失败：${response.code}")

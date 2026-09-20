@@ -12,12 +12,20 @@ struct RemoteHTTPClient {
     private let decoder: JSONDecoder
     private let debugLog: (String) -> Void
 
+    /// §4.2：/health 之外的所有 HTTP 端点都要求 `Authorization: Bearer`。
+    /// session 由调用方传入——已配对主机必须传 pinned session（SPKI pin）。
     init(config: RemoteChatConfig, session: URLSession = .shared, debugLog: @escaping (String) -> Void = { _ in }) {
         self.config = config
         self.session = session
         self.debugLog = debugLog
         decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601Tolerant
+    }
+
+    private func authorize(_ request: inout URLRequest) {
+        if let token = config.authToken, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
     }
 
     func fetchHealth() async throws -> RemoteHealth {
@@ -48,6 +56,7 @@ struct RemoteHTTPClient {
         request.httpMethod = "POST"
         request.timeoutInterval = 60
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        authorize(&request)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         request.httpBody = try encoder.encode(body)
@@ -82,6 +91,7 @@ struct RemoteHTTPClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 20
+        authorize(&request)
 
         debugLog("GET \(path)")
         do {

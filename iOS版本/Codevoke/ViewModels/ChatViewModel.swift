@@ -169,10 +169,21 @@ final class ChatViewModel: ObservableObject {
 
     init(initialConfig: RemoteChatConfig? = nil) {
         let defaults = UserDefaults.standard
-        config = initialConfig ?? RemoteChatConfig(
+        var resolved = initialConfig ?? RemoteChatConfig(
             macHost: defaults.string(forKey: "remote.macHost") ?? "",
             port: defaults.object(forKey: "remote.port") == nil ? DeviceConnectViewModel.defaultPort : defaults.integer(forKey: "remote.port")
         )
+        // 凭据不落 UserDefaults——持久化的只有 hostId 指针，重启后从这里
+        // 回 EndpointStore（Keychain）取 token/fp（§6 EndpointStore）。
+        if resolved.hostId == nil {
+            resolved.hostId = defaults.string(forKey: "remote.hostId")
+        }
+        if let hostId = resolved.hostId, let record = EndpointStore.shared.record(forHostId: hostId) {
+            resolved.hostName = record.name
+            resolved.authToken = record.token
+            resolved.certFP = record.certFP
+        }
+        config = resolved
         collapseToolsByDefault = defaults.object(forKey: "ui.collapseTools") == nil ? true : defaults.bool(forKey: "ui.collapseTools")
         _localSelectedProjectId = defaults.string(forKey: Self.persistedProjectFocusKey).flatMap(UUID.init(uuidString:))
         focusedSessionId = defaults.string(forKey: Self.persistedSessionFocusKey).flatMap(UUID.init(uuidString:))
@@ -186,6 +197,12 @@ final class ChatViewModel: ObservableObject {
         let defaults = UserDefaults.standard
         defaults.set(config.macHost, forKey: "remote.macHost")
         defaults.set(config.port, forKey: "remote.port")
+        // hostId 只是指针；token/fp 始终在 EndpointStore 的 Keychain 里。
+        if let hostId = config.hostId {
+            defaults.set(hostId, forKey: "remote.hostId")
+        } else {
+            defaults.removeObject(forKey: "remote.hostId")
+        }
         // Drop keys from the pre-LAN-only builds.
         defaults.removeObject(forKey: "remote.token")
         defaults.removeObject(forKey: "remote.connectionId")
@@ -261,12 +278,18 @@ final class ChatViewModel: ObservableObject {
         lastError = nil
         do {
             if supportsActiveDirectHTTP {
-                do {
-                    let client = makeHTTPClient()
-                    _ = try await client.fetchHealth()
-                    appendDebug("refresh health ok")
-                } catch {
-                    throw error
+                if config.isPaired {
+                    // 已配对主机跳过单一地址的 /health 预检：持久化的地址可能
+                    // 已失效但其它 eps 可用，交给 RemoteWanTransport 逐条竞速判定。
+                    appendDebug("refresh health preflight skipped: paired transport races endpoints")
+                } else {
+                    do {
+                        let client = makeHTTPClient()
+                        _ = try await client.fetchHealth()
+                        appendDebug("refresh health ok")
+                    } catch {
+                        throw error
+                    }
                 }
             } else {
                 throw RemoteChatError.missingConfiguration
@@ -1334,10 +1357,22 @@ final class ChatViewModel: ObservableObject {
             return true
         }
         guard config.isComplete else { return false }
-        appendDebug("WS connect: \(reason) host=\(config.macHost):\(config.port)")
+        appendDebug("WS connect: \(reason) host=\(config.macHost):\(config.port) paired=\(config.isPaired)")
         connectionStatus = "连接中"
         let generation = webSocketGeneration
-        let client = RemoteWebSocketClient(config: config)
+        // §6：已配对主机走 RemoteWanTransport（lastGood 先行 + eps 并行竞速，
+        // SPKI pin + Bearer）；LAN/WAN 同一条 wss 路径，差别只在候选地址。
+        // 未配对目标保留原单地址实现——连不上属预期，UI 会引导先配对。
+        let client: RemoteTransport
+        if config.isPaired {
+            let wan = RemoteWanTransport(config: config)
+            wan.onEndpointSelected = { [weak self] endpoint in
+                self?.adoptSelectedEndpoint(endpoint)
+            }
+            client = wan
+        } else {
+            client = RemoteWebSocketClient(config: config, session: httpSession())
+        }
         return startTransport(client, generation: generation)
     }
 
@@ -1429,10 +1464,36 @@ final class ChatViewModel: ObservableObject {
                 self.failPendingRecoveryRequests(message: L10n.string("远程连接已断开，请重新连接。"))
                 if let error {
                     self.appendDebug("WS disconnected: \(error.localizedDescription)")
+                    // 需要用户动作的失败（§6）：地址失效引导重配对/回 LAN，
+                    // 鉴权失败与证书轮换引导重新配对；未配对配置给配对指引。
+                    // 其余瞬断交给自动重连，不打扰用户。
+                    if let remoteError = error as? RemoteChatError {
+                        switch remoteError {
+                        case .unauthorized, .certificateMismatch, .endpointsStale:
+                            self.lastError = remoteError.localizedDescription
+                        default:
+                            break
+                        }
+                    } else if !self.config.isPaired {
+                        self.lastError = L10n.string("该设备尚未配对，请返回设备列表扫码或输入连接串完成配对。")
+                    }
                 }
                 self.scheduleReconnect(generation: generation)
             }
         }
+    }
+
+    /// WAN 竞速胜出后把 config 的主目标对齐到实际可用地址——/files、
+    /// /attachments 等 HTTP 调用跟随同一 endpoint，并持久化供下次启动竞速。
+    private func adoptSelectedEndpoint(_ endpoint: RemoteEndpoint) {
+        guard endpoint.isValid else { return }
+        guard config.macHost != endpoint.a || config.port != endpoint.p else { return }
+        appendDebug("WS endpoint adopted: \(endpoint.displayText)")
+        config.macHost = endpoint.a
+        config.port = endpoint.p
+        let defaults = UserDefaults.standard
+        defaults.set(endpoint.a, forKey: "remote.macHost")
+        defaults.set(endpoint.p, forKey: "remote.port")
     }
 
     private func disconnectCurrentTransport() {
@@ -1739,11 +1800,28 @@ final class ChatViewModel: ObservableObject {
     // MARK: - Helpers
 
     private func makeHTTPClient() -> RemoteHTTPClient {
-        RemoteHTTPClient(config: config) { [weak self] message in
+        RemoteHTTPClient(config: config, session: httpSession()) { [weak self] message in
             Task { @MainActor [weak self] in
                 self?.appendDebug(message)
             }
         }
+    }
+
+    /// 已配对主机的 HTTP（/connect_info 之外的 /files、/attachments 等）必须走
+    /// SPKI-pin session（§4.2/§4.3）。按 certFP 缓存复用，避免每次请求新建
+    /// URLSession（不 invalidate 会泄漏 delegate）。
+    private var cachedHTTPSession: (fp: String, session: URLSession)?
+    private func httpSession() -> URLSession {
+        guard let fp = config.certFP, !RemoteWanCredentials.normalizeFP(fp).isEmpty else {
+            return .shared
+        }
+        if let cached = cachedHTTPSession, cached.fp == fp {
+            return cached.session
+        }
+        cachedHTTPSession?.session.invalidateAndCancel()
+        let (session, _) = RemoteSecureSessionFactory.pinnedSession(certFP: fp)
+        cachedHTTPSession = (fp, session)
+        return session
     }
 
     private func appendDebug(_ line: String) {

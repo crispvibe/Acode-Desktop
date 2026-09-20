@@ -6,6 +6,7 @@ import type {
   RemoteHostApplyCommandRequest,
   RemoteHostBridge,
   RemoteHostCommandResult,
+  RemoteHostPairingInfo,
   RemoteHostStatus,
   WindowControlAction
 } from "../shared/ipc";
@@ -85,7 +86,10 @@ const ipcChannels = {
   remoteHostPushSnapshot: "remote-host:push-snapshot",
   remoteHostApplyCommand: "remote-host:apply-command",
   remoteHostCommandResult: "remote-host:command-result",
-  remoteHostStatus: "remote-host:status"
+  remoteHostStatus: "remote-host:status",
+  remoteHostGetPairing: "remote-host:get-pairing",
+  remoteHostRevokeDevice: "remote-host:revoke-device",
+  remoteHostRefreshEndpoints: "remote-host:refresh-endpoints"
 } as const;
 
 function toAppInfo(value: unknown): AppInfo {
@@ -286,6 +290,15 @@ const api = {
     },
     async sendCommandResult(result: RemoteHostCommandResult): Promise<void> {
       await ipcRenderer.invoke(ipcChannels.remoteHostCommandResult, result);
+    },
+    async getPairing(): Promise<RemoteHostPairingInfo | null> {
+      return ipcRenderer.invoke(ipcChannels.remoteHostGetPairing) as Promise<RemoteHostPairingInfo | null>;
+    },
+    async revokeDevice(deviceId: string): Promise<RemoteHostStatus> {
+      return ipcRenderer.invoke(ipcChannels.remoteHostRevokeDevice, { deviceId }) as Promise<RemoteHostStatus>;
+    },
+    async refreshEndpoints(): Promise<RemoteHostStatus> {
+      return ipcRenderer.invoke(ipcChannels.remoteHostRefreshEndpoints) as Promise<RemoteHostStatus>;
     },
     onStatus(listener: (status: RemoteHostStatus) => void): () => void {
       remoteHostStatusListeners.add(listener);

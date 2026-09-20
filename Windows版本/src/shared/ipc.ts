@@ -41,7 +41,11 @@ export const ipcChannels = {
   remoteHostPushSnapshot: "remote-host:push-snapshot",
   remoteHostApplyCommand: "remote-host:apply-command",
   remoteHostCommandResult: "remote-host:command-result",
-  remoteHostStatus: "remote-host:status"
+  remoteHostStatus: "remote-host:status",
+  // WAN 直连：配对载荷 / 设备吊销 / endpoint 诊断刷新
+  remoteHostGetPairing: "remote-host:get-pairing",
+  remoteHostRevokeDevice: "remote-host:revoke-device",
+  remoteHostRefreshEndpoints: "remote-host:refresh-endpoints"
 } as const;
 
 export const appInfoSchema = z.object({
@@ -108,6 +112,40 @@ export type SettingsAuthorizedFolderRemoveRequest = z.infer<typeof settingsAutho
 
 // ---- 远程 host（手机连 Windows）IPC 负载 ----
 
+/** 已配对设备（主进程 → 渲染进程；不含 token 哈希）。 */
+export const remoteHostPairedDeviceSchema = z.object({
+  deviceId: z.string(),
+  deviceName: z.string(),
+  createdAt: z.string(),
+  lastSeen: z.string().nullable(),
+  via: z.enum(["qr", "code"])
+});
+
+export type RemoteHostPairedDevice = z.infer<typeof remoteHostPairedDeviceSchema>;
+
+/** WAN 候选 endpoint（契约 §4.4 eps + 状态）。 */
+export const wanEndpointSchema = z.object({
+  a: z.string(),
+  p: z.number().int().nonnegative(),
+  kind: z.enum(["ipv6", "ipv4-mapped", "lan"]),
+  status: z.enum(["ok", "unverified"])
+});
+
+export type WanEndpoint = z.infer<typeof wanEndpointSchema>;
+
+/** WanEndpointPublisher 诊断快照（契约 §5.3）。 */
+export const wanDiagnosticsSchema = z.object({
+  endpoints: z.array(wanEndpointSchema),
+  gatewayIPv4: z.string().nullable(),
+  externalIPv4: z.string().nullable(),
+  cgnatIPv4: z.boolean(),
+  mappingMethod: z.enum(["nat-pmp", "upnp", "none"]),
+  notes: z.array(z.string()),
+  lastRefreshAt: z.string().nullable()
+});
+
+export type WanDiagnostics = z.infer<typeof wanDiagnosticsSchema>;
+
 /** 远程 host 运行状态（主进程 → 渲染进程 / 设置页）。 */
 export const remoteHostStatusSchema = z.object({
   enabled: z.boolean(),
@@ -115,10 +153,32 @@ export const remoteHostStatusSchema = z.object({
   port: z.number().int().nonnegative(),
   lanAddress: z.string().nullable(),
   activeConnectionCount: z.number().int().nonnegative(),
-  lastError: z.string().nullable()
+  lastError: z.string().nullable(),
+  /** 自签证书 SPKI-SHA256 hex（配对指纹；轮换即失效需重新配对）。 */
+  fingerprint: z.string().nullable(),
+  /** WAN endpoint 诊断；未启动时为 null。 */
+  wan: wanDiagnosticsSchema.nullable(),
+  pairedDevices: z.array(remoteHostPairedDeviceSchema)
 });
 
 export type RemoteHostStatus = z.infer<typeof remoteHostStatusSchema>;
+
+/** 配对信息（QR 内容 + 连接串 + 屏显 6 位码）。服务未运行时返回 null。 */
+export const remoteHostPairingInfoSchema = z.object({
+  /** acode://pair?d=<base64url(JSON)>，QR 与「复制连接串」共用。 */
+  pairingUri: z.string(),
+  code: z.string().length(6),
+  codeExpiresAt: z.string(),
+  fingerprintHex: z.string()
+});
+
+export type RemoteHostPairingInfo = z.infer<typeof remoteHostPairingInfoSchema>;
+
+export const remoteHostRevokeDeviceRequestSchema = z.object({
+  deviceId: z.string().min(1)
+});
+
+export type RemoteHostRevokeDeviceRequest = z.infer<typeof remoteHostRevokeDeviceRequestSchema>;
 
 export const remoteHostSetEnabledRequestSchema = z.object({
   enabled: z.boolean()
@@ -160,6 +220,12 @@ export interface RemoteHostBridge {
   setEnabled: (enabled: boolean) => Promise<RemoteHostStatus>;
   pushSnapshot: (snapshot: PanelStateSnapshot) => Promise<void>;
   sendCommandResult: (result: RemoteHostCommandResult) => Promise<void>;
+  /** 取配对信息（QR 载荷 + 6 位码）；服务未运行时返回 null。 */
+  getPairing: () => Promise<RemoteHostPairingInfo | null>;
+  /** 吊销已配对设备。 */
+  revokeDevice: (deviceId: string) => Promise<RemoteHostStatus>;
+  /** 强制刷新 WAN endpoint 诊断。 */
+  refreshEndpoints: () => Promise<RemoteHostStatus>;
   onStatus: (listener: (status: RemoteHostStatus) => void) => () => void;
   onApplyCommand: (listener: (payload: RemoteHostApplyCommandRequest) => void) => () => void;
 }

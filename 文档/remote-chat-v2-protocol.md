@@ -5,11 +5,11 @@
 
 ## Boundary
 
-Remote Chat keeps HTTP and WebSocket together on the LAN.
+Remote Chat keeps HTTP and WebSocket together on one direct connection.
 
 - Recovery RPC is the authoritative read path for catalog, sessions, messages,
-  files, and attachments. It is carried by HTTP/WebSocket only — acode 为纯局域网
-  直连，不存在 relay/P2P/WebRTC 传输层。
+  files, and attachments. It is carried by HTTP/WebSocket only — acode 为直连
+  架构（局域网 + 跨网直连），不存在 relay/P2P/WebRTC 传输层。
 - WebSocket live frames are the control path: commands, command ack, queue
   updates, turn events, output deltas, snapshots, and heartbeats.
 

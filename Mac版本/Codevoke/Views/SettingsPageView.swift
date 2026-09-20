@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import SwiftUI
 
 struct SettingsPageView: View {
@@ -150,6 +151,9 @@ struct SettingsPageView: View {
     @State private var remoteChatEnabled = true
     @State private var remoteChatBindLAN = true
     @State private var remoteChatStatus = ""
+    @State private var pairingPresentation: RemotePairingPresentation?
+    @State private var pairedDevices: [RemotePairedDevice] = []
+    @State private var wanSnapshot = WanEndpointPublisher.Snapshot()
 
     @State private var selectedGlobalRuleKind: GlobalRuleKind = .claude
     @State private var globalRuleText = ""
@@ -484,6 +488,15 @@ struct SettingsPageView: View {
                 deviceConnectionOverview
                 remoteChatControlPanel
             }
+            settingsCard(title: "跨网直连与配对") {
+                wanPairingPanel
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .remotePairingStateDidChange)) { _ in
+            refreshPairingState()
+        }
+        .onAppear {
+            refreshPairingState()
         }
     }
 
@@ -497,7 +510,7 @@ struct SettingsPageView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("手机、Mac、项目会话")
                         .font(.system(size: 16, weight: .semibold))
-                    Text("同一局域网内的设备可以通过 HTTP + WebSocket 直连这台 Mac，无需账号或云端中转。")
+                    Text("局域网和跨网都通过加密通道（wss）直连这台 Mac，配对码/二维码完成鉴权，无需账号或云端中转。")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -529,7 +542,7 @@ struct SettingsPageView: View {
             }
 
             HStack(spacing: 10) {
-                metricChip(title: "连接方式", value: "局域网直连")
+                metricChip(title: "连接方式", value: "局域网直连 + 跨网直连")
                 metricChip(title: "本机端口", value: "\(RemoteChatServerController.defaultPort)")
                 metricChip(title: "WebSocket", value: diagnostics.activeWebSocketCount > 0 ? "\(diagnostics.activeWebSocketCount) 个在线" : "空闲")
             }
@@ -567,6 +580,196 @@ struct SettingsPageView: View {
                     .buttonStyle(SettingsPrimaryButtonStyle())
             }
         }
+    }
+
+    // MARK: - WAN pairing panel
+
+    private var wanPairingPanel: some View {
+        let controller = RemoteChatServerController.shared
+
+        return VStack(alignment: .leading, spacing: 16) {
+            if !remoteChatEnabled {
+                wanHint("设备连接服务已关闭。开启后才能配对新设备。")
+            } else if !remoteChatBindLAN {
+                wanHint("当前仅监听本机回环（loopback），其他设备无法连接。开启「允许局域网直连」后可配对。")
+            } else if !controller.isRunning {
+                wanHint(controller.lastError.map { "服务未运行：\($0)" } ?? "保存上方设置后服务才会启动。")
+            } else {
+                pairingControls
+                wanEndpointList
+                pairedDeviceList
+                Text("二维码和配对码只在出示期间有效：码 5 分钟过期、一次性；扫码连接串含配对凭证。吊销设备后对应 token 立即失效。若提示 CGNAT 或「需手动端口转发」，请在路由器上把 TCP \(RemoteChatServerController.defaultPort) 转发到这台 Mac，或改用 IPv6 直连（需在路由器防火墙放通该端口）。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var pairingControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Button(pairingPresentation == nil ? "生成配对二维码与连接串" : "重新生成") {
+                    pairingPresentation = RemoteChatServerController.shared.makePairingPresentation()
+                }
+                .buttonStyle(SettingsPrimaryButtonStyle(compact: true))
+                if pairingPresentation != nil {
+                    Button("清除") {
+                        pairingPresentation = nil
+                        RemoteChatServerController.shared.pairingService.cancelPairing()
+                    }
+                    .buttonStyle(SettingsSecondaryButtonStyle(compact: true))
+                }
+            }
+
+            if let presentation = pairingPresentation {
+                HStack(alignment: .top, spacing: 18) {
+                    if let image = Self.qrImage(for: presentation.connectionString) {
+                        Image(nsImage: image)
+                            .interpolation(.none)
+                            .resizable()
+                            .frame(width: 168, height: 168)
+                            .padding(10)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AppTheme.hairline, lineWidth: 1))
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("局域网 6 位配对码")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Text(presentation.pairingCode)
+                                .font(.system(size: 28, weight: .bold, design: .monospaced))
+                                .textSelection(.enabled)
+                            Text("手机与 Mac 在同一 Wi‑Fi 时输入；\(codeExpiryText(presentation.codeExpiresAt))后失效。")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Button("复制连接串") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(presentation.connectionString, forType: .string)
+                        }
+                        .buttonStyle(SettingsSecondaryButtonStyle(compact: true))
+                        Text("连接串含配对凭证，仅发送给可信设备。")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    private var wanEndpointList: some View {
+        let snapshot = wanSnapshot
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("跨网可达性")
+                .font(.system(size: 13, weight: .semibold))
+            if snapshot.diagnostics.isEmpty {
+                wanHint("正在检测网络环境…")
+            } else {
+                ForEach(snapshot.diagnostics) { item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Circle()
+                            .fill(wanStateColor(item.state))
+                            .frame(width: 7, height: 7)
+                            .padding(.top, 4)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title)
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            Text(item.detail)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                if snapshot.endpoints.isEmpty {
+                    wanHint("当前网络无法跨网直连：既无可用全球 IPv6，也未获得公网 IPv4 映射。可手动在路由器上做端口转发后用手机扫码配对。")
+                }
+            }
+        }
+        .padding(14)
+        .background(AppTheme.inputSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AppTheme.hairline, lineWidth: 1))
+    }
+
+    private var pairedDeviceList: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("已配对设备")
+                .font(.system(size: 13, weight: .semibold))
+            if pairedDevices.isEmpty {
+                wanHint("还没有已配对设备。")
+            } else {
+                ForEach(pairedDevices) { device in
+                    HStack(spacing: 10) {
+                        Image(systemName: "iphone")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 26)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(device.deviceName)
+                                .font(.system(size: 12, weight: .semibold))
+                                .lineLimit(1)
+                            Text(device.lastSeen.map { "最近连接 \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "配对于 \(device.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Button("吊销") {
+                            RemoteChatServerController.shared.revokeDevice(device.id)
+                        }
+                        .buttonStyle(SettingsDestructiveButtonStyle())
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(AppTheme.inputSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AppTheme.hairline, lineWidth: 1))
+    }
+
+    private func wanHint(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func wanStateColor(_ state: WanEndpointPublisher.DiagnosticState) -> Color {
+        switch state {
+        case .usable: return .green
+        case .checking: return .orange
+        case .cgnat, .unavailable: return .secondary.opacity(0.6)
+        case .unsupported: return .red.opacity(0.85)
+        }
+    }
+
+    private func codeExpiryText(_ expiresAt: Date) -> String {
+        let remaining = max(0, Int(expiresAt.timeIntervalSinceNow))
+        return remaining > 0 ? "\(remaining / 60) 分 \(remaining % 60) 秒" : "已过期"
+    }
+
+    private func refreshPairingState() {
+        let controller = RemoteChatServerController.shared
+        pairedDevices = controller.pairedDevices()
+        wanSnapshot = controller.wanSnapshot()
+    }
+
+    private static func qrImage(for string: String) -> NSImage? {
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(string.utf8), forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage else { return nil }
+        let scale = 600 / max(output.extent.width, 1)
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        let rep = NSCIImageRep(ciImage: scaled)
+        let image = NSImage(size: rep.size)
+        image.addRepresentation(rep)
+        return image
     }
 
     private func remoteSettingToggle(title: String, subtitle: String, isOn: Binding<Bool>) -> some View {

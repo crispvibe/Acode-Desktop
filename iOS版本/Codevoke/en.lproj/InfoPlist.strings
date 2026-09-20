@@ -1,2 +1,2 @@
-"NSCameraUsageDescription" = "acode needs camera access to take photos and upload them as attachments.";
+"NSCameraUsageDescription" = "acode needs camera access to take photos as attachments and scan the pairing QR code shown on your desktop.";
 "NSLocalNetworkUsageDescription" = "acode needs local network access to connect to your authorized desktop acode app.";

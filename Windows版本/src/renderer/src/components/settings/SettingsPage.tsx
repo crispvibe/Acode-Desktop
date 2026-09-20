@@ -14,6 +14,7 @@ import {
   Trash2
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { chatCLIDisplayNames, chatCLIValues } from "@shared/chat";
 import { cliLaunchEnvFor } from "@shared/settings";
 import type {
@@ -29,7 +30,7 @@ import type {
   WindowsShell,
   WindowsTerminal
 } from "@shared/settings";
-import type { RemoteHostStatus } from "@shared/ipc";
+import type { RemoteHostPairingInfo, RemoteHostStatus, WanDiagnostics, WanEndpoint } from "@shared/ipc";
 import { AppLogo } from "../AppLogo";
 import { selectProfiles, useSettingsStore } from "../../stores/settingsStore";
 
@@ -521,7 +522,10 @@ function RemoteChatSettings() {
 
 function WindowsHostPanel() {
   const [status, setStatus] = useState<RemoteHostStatus | null>(null);
+  const [pairing, setPairing] = useState<RemoteHostPairingInfo | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const bridgeAvailable = Boolean(window.codevoke?.remoteHost);
 
@@ -543,6 +547,54 @@ function WindowsHostPanel() {
     };
   }, []);
 
+  const enabled = status?.enabled ?? false;
+  const running = status?.running ?? false;
+
+  useEffect(() => {
+    const bridge = window.codevoke?.remoteHost;
+    if (!bridge || !running) {
+      setPairing(null);
+      return;
+    }
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const fetchPairing = () => {
+      void bridge.getPairing().then((value) => {
+        if (!active) return;
+        setPairing(value);
+        // 6 位码 5 分钟过期：到期后自动重取（ensurePairingCode 会换新码）。
+        const expiresAtMs = value ? Date.parse(value.codeExpiresAt) : Number.NaN;
+        if (Number.isFinite(expiresAtMs)) {
+          const delay = Math.max(1_000, expiresAtMs - Date.now() + 500);
+          timer = setTimeout(fetchPairing, delay);
+        }
+      }).catch(() => undefined);
+    };
+    fetchPairing();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [running]);
+
+  useEffect(() => {
+    if (!pairing) {
+      setQrDataUrl(null);
+      return;
+    }
+    let active = true;
+    QRCode.toDataURL(pairing.pairingUri, { margin: 1, width: 220 })
+      .then((url) => {
+        if (active) setQrDataUrl(url);
+      })
+      .catch(() => {
+        if (active) setQrDataUrl(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [pairing]);
+
   async function runHostAction(action: () => Promise<RemoteHostStatus>, successMessage?: string) {
     const bridge = window.codevoke?.remoteHost;
     if (!bridge) {
@@ -561,6 +613,20 @@ function WindowsHostPanel() {
     }
   }
 
+  async function refreshEndpoints() {
+    const bridge = window.codevoke?.remoteHost;
+    if (!bridge) return;
+    setRefreshing(true);
+    setMessage(null);
+    try {
+      setStatus(await bridge.refreshEndpoints());
+    } catch {
+      setMessage("诊断刷新失败，请重试。");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   async function copyText(text: string, successMessage: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -570,16 +636,16 @@ function WindowsHostPanel() {
     }
   }
 
-  const enabled = status?.enabled ?? false;
-  const running = status?.running ?? false;
   const serviceLabel = running ? "运行中" : enabled ? "启动中" : "已停止";
+  const wan = status?.wan ?? null;
+  const devices = status?.pairedDevices ?? [];
 
   return (
     <section className="remote-service-panel settings-panel">
       <div className="toggle-header">
         <div>
-          <h3>手机连接本机（局域网直连）</h3>
-          <p>开启后，手机在同一 Wi-Fi 下即可直连这台 Windows，发送消息并实时查看输出，无需口令。</p>
+          <h3>手机连接本机（局域网 + 跨网直连）</h3>
+          <p>开启后走 wss 加密 + 配对 token 鉴权：同一 Wi-Fi 自动发现，跨网扫二维码或粘贴连接串配对。</p>
         </div>
         <label className="switch">
           <input
@@ -596,6 +662,7 @@ function WindowsHostPanel() {
         <MetricChip title="服务状态" value={serviceLabel} />
         <MetricChip title="局域网地址" value={status?.lanAddress ?? "未发布"} />
         <MetricChip title="当前连接" value={`${status?.activeConnectionCount ?? 0} 台`} />
+        <MetricChip title="已配对设备" value={`${devices.length} 台`} />
       </div>
 
       {enabled ? (
@@ -611,7 +678,78 @@ function WindowsHostPanel() {
               </div>
             ) : null}
           </SettingsPanel>
+
+          <SettingsPanel title="扫码 / 连接串配对" subtitle="手机扫码或粘贴连接串即可完成跨网配对；同一局域网也可用下方 6 位码配对。">
+            {pairing ? (
+              <>
+                {qrDataUrl ? (
+                  <div className="settings-row pairing-qr-row">
+                    <img className="pairing-qr" src={qrDataUrl} alt="配对二维码" />
+                  </div>
+                ) : null}
+                <div className="settings-row"><span>6 位配对码</span><b>{pairing.code}</b></div>
+                <div className="settings-row"><span>配对码有效期至</span><b>{formatTime(pairing.codeExpiresAt)}</b></div>
+                <div className="settings-row"><span>证书指纹</span><code>{shortFingerprint(pairing.fingerprintHex)}</code></div>
+                <textarea className="settings-textarea compact" readOnly value={pairing.pairingUri} rows={3} />
+                <div className="settings-actions">
+                  <button type="button" onClick={() => void copyText(pairing.pairingUri, "连接串已复制。")}>
+                    <Copy size={14} /> 复制连接串
+                  </button>
+                </div>
+                {wan && wan.endpoints.every((endpoint) => endpoint.kind === "lan") ? (
+                  <p className="settings-hint">当前未发布任何跨网候选地址，扫码/连接串仅局域网可用；跨网请先解决下方诊断项。</p>
+                ) : null}
+              </>
+            ) : (
+              <p className="settings-hint">服务未在监听，无法生成配对信息。</p>
+            )}
+          </SettingsPanel>
         </div>
+      ) : null}
+
+      {enabled && devices.length > 0 ? (
+        <SettingsPanel title="已配对设备" subtitle="吊销后该设备立即无法连接，需要重新配对。">
+          {devices.map((device) => (
+            <div className="settings-row" key={device.deviceId}>
+              <span>{device.deviceName}{device.via === "qr" ? "（扫码）" : ""}</span>
+              <b>{device.lastSeen ? `上次连接 ${formatTime(device.lastSeen)}` : "未连接过"}</b>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void runHostAction(() => window.codevoke!.remoteHost.revokeDevice(device.deviceId), "已吊销。")}
+              >
+                <Trash2 size={14} /> 吊销
+              </button>
+            </div>
+          ))}
+        </SettingsPanel>
+      ) : null}
+
+      {enabled ? (
+        <SettingsPanel title="跨网直连诊断" subtitle="电脑对外发布的候选地址：全球 IPv6 优先，路由器映射 IPv4 其次，局域网地址垫底。">
+          <div className="settings-row"><span>默认网关</span><b>{wan?.gatewayIPv4 ?? "未发现"}</b></div>
+          <div className="settings-row"><span>外部 IPv4</span><b>{wan?.externalIPv4 ?? "未获取"}{wan?.cgnatIPv4 ? "（CGNAT）" : ""}</b></div>
+          <div className="settings-row"><span>映射方式</span><b>{mappingMethodLabel(wan?.mappingMethod)}</b></div>
+          {(wan?.endpoints ?? []).map((endpoint) => (
+            <div className="settings-row" key={`${endpoint.a}:${endpoint.p}`}>
+              <span>{endpointKindLabel(endpoint.kind)}</span>
+              <code>{endpoint.a}:{endpoint.p}</code>
+              <b>{endpoint.status === "ok" ? "直连可用" : "未验证"}</b>
+            </div>
+          ))}
+          {(wan?.notes ?? []).map((note) => (
+            <div className="settings-row" key={note}><span>{note}</span></div>
+          ))}
+          <p className="settings-hint">
+            路由器不支持自动映射时，请在路由器手动把 TCP {status?.port ?? 18765} 转发到本机（{status?.lanAddress ?? "本机局域网地址"}），然后让手机重新扫码。
+            两端都无 IPv6 且没有公网 IPv4 时无法直连。
+          </p>
+          <div className="settings-actions">
+            <button type="button" disabled={refreshing} onClick={() => void refreshEndpoints()}>
+              <RefreshCw size={14} /> {refreshing ? "刷新中…" : "刷新诊断"}
+            </button>
+          </div>
+        </SettingsPanel>
       ) : null}
 
       {status?.lastError ? <p className="account-message error">{status.lastError}</p> : null}
@@ -619,6 +757,27 @@ function WindowsHostPanel() {
       {!bridgeAvailable ? <p className="settings-hint">远程 host 接口不可用。</p> : null}
     </section>
   );
+}
+
+function endpointKindLabel(kind: WanEndpoint["kind"]): string {
+  if (kind === "ipv6") return "IPv6";
+  if (kind === "ipv4-mapped") return "IPv4（映射）";
+  return "局域网";
+}
+
+function mappingMethodLabel(method: WanDiagnostics["mappingMethod"] | undefined): string {
+  if (method === "nat-pmp") return "NAT-PMP";
+  if (method === "upnp") return "UPnP";
+  return "无";
+}
+
+function shortFingerprint(fp: string): string {
+  return fp.length > 16 ? `${fp.slice(0, 8)}…${fp.slice(-8)}` : fp;
+}
+
+function formatTime(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
 function MetricChip({ title, value }: { title: string; value: string }) {

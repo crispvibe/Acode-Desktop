@@ -823,5 +823,5 @@ This means the legacy mirror plumbing (`NotificationCenter.default.post(.remoteC
 
 - Multi-user concurrent editing on Mac.
 - File-tree browsing protocol (see Q8).
-- Authentication（局域网版本无鉴权，安全提示见 README）。
+- Authentication（已由跨网直连方案统一处理：wss + token 鉴权，见 `remote-chat-wan-direct.md`）。
 - Phase C cleanup of legacy producer code.

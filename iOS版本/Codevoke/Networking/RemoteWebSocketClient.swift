@@ -96,6 +96,10 @@ final class RemoteWebSocketClient: RemoteTransport {
         let epoch = bumpEpoch()
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
+        // §4.2：/chat upgrade 携带 Bearer；缺失/错误时服务端在 101 前回 401。
+        if let token = config.authToken, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         let task = session.webSocketTask(with: request)
         self.task = task
         task.resume()
@@ -280,6 +284,11 @@ final class RemoteWebSocketClient: RemoteTransport {
     }
 
     private func annotatedDisconnectError(_ error: Error) -> Error {
+        // upgrade 被服务端拒绝（如 token 失效的 401）时拿不到 closeCode，
+        // 但 task.response 里保留 HTTP 响应——翻成 .unauthorized 供上层提示重新配对。
+        if let http = task?.response as? HTTPURLResponse, http.statusCode == 401 {
+            return RemoteChatError.unauthorized
+        }
         guard let task, task.closeCode != .invalid else { return error }
         let reason = task.closeReason.flatMap { String(data: $0, encoding: .utf8) }
         return RemoteWebSocketClosedError(underlying: error, closeCode: task.closeCode, closeReason: reason)

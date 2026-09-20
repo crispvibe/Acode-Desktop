@@ -59,17 +59,21 @@ class RemoteChatClient(
         disconnect()
         val generation = ++connectionGeneration
         this.config = config
-        activeClient = client ?: defaultClient
+        // 重连（scheduleReconnect 不传 client）必须沿用首次连接用的
+        // pinned/wifi-bound client，否则 TLS pin 或网卡绑定会丢失。
+        activeClient = client ?: activeClient
         reconnectSessionId = focusedSessionId
         reconnectLastRevision = lastRevision
         intentionallyClosed = false
         resetReadySignal()
         isTransportConnected = false
         onStatus?.invoke("连接中")
-        val request = Request.Builder()
-            .url(config.webSocketUrl)
-            .build()
-        webSocket = activeClient.newWebSocket(request, Listener(focusedSessionId, lastRevision, generation))
+        val requestBuilder = Request.Builder().url(config.webSocketUrl)
+        // 契约 §4.2：/chat upgrade 请求头带 Authorization，鉴权失败在 101 之前回 401。
+        if (config.token.isNotBlank()) {
+            requestBuilder.header("Authorization", "Bearer ${config.token}")
+        }
+        webSocket = activeClient.newWebSocket(requestBuilder.build(), Listener(focusedSessionId, lastRevision, generation))
     }
 
     fun disconnect() {
@@ -209,7 +213,9 @@ class RemoteChatClient(
             completeReadySignal(false)
             onStatus?.invoke("未连接")
             onError?.invoke(t.localizedMessage)
-            if (response?.code == 401) {
+            // 401（token 失效）与证书指纹不匹配都是确定性失败，重试无意义，
+            // 需重新配对 —— 停止自动重连，避免无限循环。
+            if (response?.code == 401 || RemoteWanClient.isCertificateFailure(t)) {
                 intentionallyClosed = true
                 return
             }

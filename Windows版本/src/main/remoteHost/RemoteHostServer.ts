@@ -2,19 +2,29 @@
 // 的传输 + 广播职责（去掉 legacy/WebRTC 路径，只保留一期需要的 VNC 协议）。
 //
 // 职责（纯传输层，不含面板逻辑）：
-//   1. 起 http(`/health`) + ws(`/chat`) 服务器（局域网直连，不鉴权）。
+//   1. 起 https+wss 服务器（自签 ECDSA P-256 证书，客户端走 SPKI pin 校验）；
+//      LAN/WAN 同一套 wss+Bearer 鉴权（契约 §4.1/§4.2）。
 //   2. 维护每条连接的 focus（focusedSessionId / isResolvingDraftSession）。
 //   3. 把 broadcaster 产出的 PanelStateEnvelope 按 focus fanout 给匹配的连接。
 //   4. 解析手机来的 `command` / `resume` 帧，交给 delegate（RemoteHostController）
 //      处理面板逻辑，回 `command_ack` / `panel_state`。
 //
-// 面板逻辑（snapshot 组装、命令应用）由 delegate 提供，delegate 持有
-// PanelStateBroadcaster 并通过 IPC 与渲染进程通信。
+// HTTP 端点契约（§4.2）：/health、/pair 不鉴权（/pair 仅私网来源），
+// /connect_info 与其余 HTTP + WS upgrade 一律 Bearer。
+// 面板逻辑（snapshot 组装、命令应用）由 delegate 提供。
 
-import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
+import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
+import type { Socket } from "node:net";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket, type RawData } from "ws";
+
+import { isLoopbackAddress, isPrivateSourceAddress } from "./ipRanges.js";
+import {
+  AUTH_FAILURES_PER_CONNECTION_LIMIT,
+  type PairingService
+} from "./PairingService.js";
 
 import {
   attachmentUploadRequestSchema,
@@ -40,6 +50,9 @@ const MAX_FRAME_BYTES = 25 * 1024 * 1024;
 /** HTTP `POST /attachments` 请求体上限：base64(10MB) + 64KB JSON 余量，对齐 Mac 的附件帧上限。 */
 const MAX_HTTP_BODY_BYTES = remoteRecoveryLimits.maximumTextFrameUTF8Bytes;
 
+/** `POST /pair` 请求体上限：{code, deviceName} 只有几十字节，4KB 足够。 */
+const MAX_PAIR_BODY_BYTES = 4 * 1024;
+
 /** 命令应用结果（delegate → server）。对应 Mac `RemoteChatCommandRouter.Dispatch`。 */
 export interface RemoteHostCommandDispatch {
   /** 要回给手机的 ack。 */
@@ -62,10 +75,31 @@ export interface RemoteHostServerDelegate {
   snapshotFor(sessionId: string | null): PanelStateSnapshot | null;
 }
 
+/** 对外发布的候选 endpoint（契约 §4.4 eps 元素）。 */
+export interface RemoteHostEndpoint {
+  a: string;
+  p: number;
+}
+
+/** TLS 材料：selfsigned 生成的 ECDSA P-256 自签证书 + SPKI-SHA256 指纹。 */
+export interface RemoteHostTlsMaterial {
+  certPem: string;
+  keyPem: string;
+  fingerprintHex: string;
+}
+
 export interface RemoteHostServerConfig {
   port: number;
-  /** true：绑 0.0.0.0 接受局域网连接；false：只绑 127.0.0.1。 */
+  /** true：绑 0.0.0.0 接受局域网/WAN 连接；false：只绑 127.0.0.1。 */
   bindLAN: boolean;
+  /** host 自签证书身份（https+wss）。 */
+  tls: RemoteHostTlsMaterial;
+  /** Bearer 鉴权 + 配对码兑换。 */
+  pairing: PairingService;
+  /** 当前对外发布的 eps（/pair、/connect_info 响应）。 */
+  endpoints: () => RemoteHostEndpoint[];
+  /** /health、/pair 响应里的主机名。 */
+  hostName: string;
 }
 
 export interface RemoteHostServerCallbacks {
@@ -172,7 +206,11 @@ function probeRequestId(raw: unknown): string | null {
 /** 请求体超过上限时抛出，供 HTTP 端点回 413。 */
 class PayloadTooLargeError extends Error {}
 
-/** 读取 HTTP 请求体并按上限限流：超过 maxBytes 立即销毁连接并抛 PayloadTooLargeError。 */
+/**
+ * 读取 HTTP 请求体并按上限限流：超过 maxBytes 抛 PayloadTooLargeError。
+ * 不 destroy socket——由调用方回 413 + `Connection: close`（先写响应再关连接，
+ * 否则 destroyed socket 上写响应会触发未处理的 error 事件）。
+ */
 function readRequestBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -181,7 +219,6 @@ function readRequestBody(req: IncomingMessage, maxBytes: number): Promise<Buffer
       total += chunk.length;
       if (total > maxBytes) {
         cleanup();
-        req.destroy();
         reject(new PayloadTooLargeError("request body too large"));
         return;
       }
@@ -219,7 +256,7 @@ function requestPathname(req: IncomingMessage): string {
 }
 
 export class RemoteHostServer {
-  private httpServer: HttpServer | null = null;
+  private httpServer: HttpsServer | null = null;
   private wss: WebSocketServer | null = null;
   private readonly connections = new Set<HostConnection>();
   private readonly wsConnections = new Map<WebSocket, HostConnection>();
@@ -265,7 +302,14 @@ export class RemoteHostServer {
     const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
     wss.on("connection", (ws) => this.handleConnection(ws));
 
-    const httpServer = createServer((req, res) => this.handleHttp(req, res));
+    const httpServer = createHttpsServer(
+      {
+        cert: this.config.tls.certPem,
+        key: this.config.tls.keyPem,
+        minVersion: "TLSv1.2"
+      },
+      (req, res) => this.handleHttp(req, res)
+    );
     httpServer.on("upgrade", (req, socket, head) => this.handleUpgrade(req, socket, head));
     httpServer.on("error", (error) => {
       this.lastError = error.message;
@@ -371,31 +415,133 @@ export class RemoteHostServer {
   // MARK: - HTTP
 
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
+    const remoteAddress = req.socket.remoteAddress ?? "";
+    // bindLAN=false 防线：即便监听面意外放大，也只接受回环来源。
+    if (!this.config.bindLAN && !isLoopbackAddress(remoteAddress)) {
+      this.writeJson(res, 403, { error: "forbidden" });
+      return;
+    }
+    // 被封禁的 IP 在路由之前一律 429（契约 §4.2 限流，与 Mac 端一致）。
+    if (this.config.pairing.isIpBanned(remoteAddress)) {
+      this.writeJson(res, 429, { error: "rate_limited", message: "尝试次数过多，请稍后再试。" });
+      return;
+    }
+
     const pathname = requestPathname(req);
     if (pathname === "/health") {
-      // 与 macOS host 同形，兼容按字段解码的客户端。
+      // 契约 §4.2：发现用，不鉴权。proto:2 表示「鉴权服务器」，pair:true 表示支持 /pair。
       this.writeJson(res, 200, {
         status: "ok",
         ok: true,
-        name: "acode (Windows)",
+        name: this.config.hostName,
         version: 1,
+        proto: 2,
+        pair: true,
         bindLAN: this.config.bindLAN,
         port: this.config.port,
-        authRequired: false
+        authRequired: true
       });
       return;
     }
+    if (pathname === "/pair") {
+      void this.handlePairRequest(req, res, remoteAddress).catch(() => undefined);
+      return;
+    }
+
+    // 其余所有 HTTP 端点一律 Bearer 鉴权。
+    if (!this.authorizeHttp(req, res)) return;
+    if (pathname === "/connect_info") {
+      if (req.method !== "GET") {
+        this.writeJson(res, 405, { error: "method_not_allowed" });
+        return;
+      }
+      this.writeJson(res, 200, { name: this.config.hostName, eps: this.config.endpoints() });
+      return;
+    }
     if (pathname === "/attachments") {
-      void this.handleAttachmentUpload(req, res);
+      void this.handleAttachmentUpload(req, res).catch(() => undefined);
       return;
     }
     this.writeJson(res, 404, { error: "not_found", message: "没有找到对应内容，请刷新后重试。" });
   }
 
-  private writeJson(res: ServerResponse, statusCode: number, body: unknown): void {
+  /**
+   * Bearer 校验：缺失/错误/被封禁 → 401。
+   * 单连接累计失败达上限时带 `Connection: close` 让底层 socket 随响应关闭（契约 §4.2 限流）。
+   */
+  private authorizeHttp(req: IncomingMessage, res: ServerResponse): boolean {
+    const result = this.config.pairing.checkBearerAuth(
+      req.headers.authorization,
+      req.socket.remoteAddress ?? "",
+      req.socket
+    );
+    if (result.ok) return true;
+    const exhausted = this.config.pairing.socketFailureCount(req.socket) >= AUTH_FAILURES_PER_CONNECTION_LIMIT;
+    this.writeJson(res, 401, { error: "unauthorized" }, exhausted ? { Connection: "close" } : undefined);
+    return false;
+  }
+
+  /**
+   * POST /pair：6 位配对码换 token（契约 §4.2）。
+   * 仅私网/回环来源；WAN 来源直接 403。每 IP 每分钟 ≤5 次尝试。
+   * body {code, deviceName} → 200 {token, fp, name, eps}。
+   */
+  private async handlePairRequest(req: IncomingMessage, res: ServerResponse, remoteAddress: string): Promise<void> {
+    if (req.method !== "POST") {
+      this.writeJson(res, 405, { error: "method_not_allowed", message: "当前请求方式不支持。" });
+      return;
+    }
+    if (!isPrivateSourceAddress(remoteAddress)) {
+      this.writeJson(res, 403, { error: "pair_forbidden", message: "配对仅允许局域网来源。" });
+      return;
+    }
+
+    let rawBody: Buffer;
+    try {
+      rawBody = await readRequestBody(req, MAX_PAIR_BODY_BYTES);
+    } catch (error) {
+      // 超限/读失败时带 Connection: close：剩余未读请求体会随连接关闭被丢弃，
+      // 避免污染 keep-alive 复用的下一条请求。
+      const closeHeader = { Connection: "close" };
+      if (error instanceof PayloadTooLargeError) {
+        this.writeJson(res, 413, { error: "payload_too_large", message: "请求体过大。" }, closeHeader);
+      } else {
+        this.writeJson(res, 400, { error: "bad_request", message: "请求内容格式不正确，请重试。" }, closeHeader);
+      }
+      return;
+    }
+    let parsedBody: unknown;
+    try {
+      parsedBody = JSON.parse(rawBody.toString("utf8"));
+    } catch {
+      this.writeJson(res, 400, { error: "bad_request", message: "请求内容格式不正确，请重试。" });
+      return;
+    }
+    const body = parsedBody && typeof parsedBody === "object"
+      ? (parsedBody as { code?: unknown; deviceName?: unknown })
+      : {};
+    const result = this.config.pairing.redeemPairingCode(remoteAddress, body.code, body.deviceName);
+    if (!result.ok) {
+      if (result.error === "rate_limited") {
+        this.writeJson(res, 429, { error: "rate_limited", message: "尝试次数过多，请稍后再试。" });
+      } else {
+        this.writeJson(res, 403, { error: "invalid_pairing_code", message: "配对码错误或已过期。" });
+      }
+      return;
+    }
+    this.writeJson(res, 200, {
+      token: result.token,
+      fp: this.config.tls.fingerprintHex,
+      name: this.config.hostName,
+      eps: this.config.endpoints()
+    });
+  }
+
+  private writeJson(res: ServerResponse, statusCode: number, body: unknown, extraHeaders?: Record<string, string>): void {
     res.writeHead(statusCode, {
       "Content-Type": "application/json; charset=utf-8",
-      "Access-Control-Allow-Origin": "*"
+      "Access-Control-Allow-Origin": "*",
+      ...extraHeaders
     });
     res.end(JSON.stringify(body));
   }
@@ -411,10 +557,11 @@ export class RemoteHostServer {
     try {
       rawBody = await readRequestBody(req, MAX_HTTP_BODY_BYTES);
     } catch (error) {
+      const closeHeader = { Connection: "close" };
       if (error instanceof PayloadTooLargeError) {
-        this.writeJson(res, 413, { error: "attachment_too_large", message: "附件超过大小限制，请压缩后再上传。" });
+        this.writeJson(res, 413, { error: "attachment_too_large", message: "附件超过大小限制，请压缩后再上传。" }, closeHeader);
       } else {
-        this.writeJson(res, 400, { error: "upload_failed", message: "附件读取失败，请重试。" });
+        this.writeJson(res, 400, { error: "upload_failed", message: "附件读取失败，请重试。" }, closeHeader);
       }
       return;
     }
@@ -441,9 +588,24 @@ export class RemoteHostServer {
   }
 
   private handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const remoteAddress = (socket as Socket).remoteAddress ?? "";
+    if (!this.config.bindLAN && !isLoopbackAddress(remoteAddress)) {
+      this.rejectUpgrade(socket, 403, "Forbidden");
+      return;
+    }
+    if (this.config.pairing.isIpBanned(remoteAddress)) {
+      this.rejectUpgrade(socket, 429, "Too Many Requests");
+      return;
+    }
     const pathname = requestPathname(req);
     if (pathname !== "/chat") {
       this.rejectUpgrade(socket, 404, "Not Found");
+      return;
+    }
+    // 契约 §4.2：WS upgrade 带 Authorization: Bearer，鉴权失败在 101 之前回 401。
+    const auth = this.config.pairing.checkBearerAuth(req.headers.authorization, remoteAddress, socket);
+    if (!auth.ok) {
+      this.rejectUpgrade(socket, 401, "Unauthorized");
       return;
     }
     const wss = this.wss;

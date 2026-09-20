@@ -20,6 +20,7 @@ private enum class CodevokeScreen {
     Chat,
     Settings,
     CLI,
+    ScanQr,
 }
 
 @Composable
@@ -54,13 +55,14 @@ fun CodevokeApp() {
             CodevokeScreen.Chat -> Unit
             CodevokeScreen.Settings -> navigateBack(if (vm.chat.config.isComplete) CodevokeScreen.Chat else CodevokeScreen.Devices)
             CodevokeScreen.CLI -> navigateBack(CodevokeScreen.Settings)
+            CodevokeScreen.ScanQr -> navigateBack(CodevokeScreen.Devices)
         }
     }
 
     LaunchedEffect(Unit) {
         vm.scanLanDevices()
-        vm.savedLanTarget()?.let { (host, port) ->
-            vm.connectLanHost(host, port) { replaceScreen(CodevokeScreen.Chat) }
+        vm.autoConnectTarget()?.let { device ->
+            vm.connectPairedHost(device.hostId) { replaceScreen(CodevokeScreen.Chat) }
         }
     }
 
@@ -72,27 +74,42 @@ fun CodevokeApp() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    BackHandler(enabled = screen == CodevokeScreen.Settings || screen == CodevokeScreen.CLI, onBack = ::handleBack)
+    BackHandler(
+        enabled = screen == CodevokeScreen.Settings || screen == CodevokeScreen.CLI || screen == CodevokeScreen.ScanQr,
+        onBack = ::handleBack,
+    )
 
     when (screen) {
         CodevokeScreen.Devices -> DeviceListScreen(
             hosts = vm.devices.hosts,
+            pairedHosts = vm.devices.pairedHosts,
             scanning = vm.devices.scanning,
             connecting = vm.devices.connecting,
+            pairing = vm.devices.pairing,
+            pairTarget = vm.devices.pairTarget,
+            pairError = vm.devices.pairError,
             manualHost = vm.devices.manualHost,
             manualPort = vm.devices.manualPort,
+            connectionString = vm.devices.connectionString,
             message = vm.devices.message,
-            connectedHost = vm.devices.connectedHost,
+            connectedHostId = vm.devices.connectedHostId,
             goBack = {
                 if (vm.chat.config.isComplete) navigateBack(CodevokeScreen.Chat)
             },
             rescan = vm::scanLanDevices,
             onManualHostChange = vm::updateManualHost,
             onManualPortChange = vm::updateManualPort,
-            connectManual = { vm.connectManualHost { replaceScreen(CodevokeScreen.Chat) } },
-            connectHost = { host ->
-                vm.connectLanHost(host, vm.devices.manualPort.trim().toIntOrNull() ?: 18765) { replaceScreen(CodevokeScreen.Chat) }
+            onConnectionStringChange = vm::updateConnectionString,
+            connectManual = vm::openManualPairDialog,
+            connectHost = { host -> vm.connectDiscoveredHost(host) { replaceScreen(CodevokeScreen.Chat) } },
+            connectPaired = { device -> vm.connectPairedHost(device.hostId) { replaceScreen(CodevokeScreen.Chat) } },
+            forgetPaired = { device -> vm.forgetPairedHost(device.hostId) },
+            openScanner = { navigateTo(CodevokeScreen.ScanQr) },
+            submitConnectionString = {
+                vm.pairFromConnectionString(vm.devices.connectionString) { replaceScreen(CodevokeScreen.Chat) }
             },
+            dismissPairDialog = vm::dismissPairDialog,
+            submitPairCode = { code -> vm.submitPairCode(code) { replaceScreen(CodevokeScreen.Chat) } },
             openChat = { replaceScreen(CodevokeScreen.Chat) },
         )
         CodevokeScreen.Chat -> ChatScreen(
@@ -158,6 +175,13 @@ fun CodevokeApp() {
             capabilities = vm.chat.capabilities,
             goBack = { navigateBack(CodevokeScreen.Settings) },
             selectCLI = vm::setCLI,
+        )
+        CodevokeScreen.ScanQr -> QrScanScreen(
+            goBack = { navigateBack(CodevokeScreen.Devices) },
+            onScanned = { text ->
+                navigateBack(CodevokeScreen.Devices)
+                vm.pairFromConnectionString(text) { replaceScreen(CodevokeScreen.Chat) }
+            },
         )
     }
 }

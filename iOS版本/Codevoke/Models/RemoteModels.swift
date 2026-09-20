@@ -60,6 +60,8 @@ struct RemoteUploadedAttachment: Identifiable, Hashable {
 // MARK: - Health
 
 // 各 host 的 /health 载荷不一致（Windows 端只回 {"status":"ok"}），字段全部按可选解。
+// WAN 契约（§4.2）新增：`proto:2` = 鉴权版服务端、`pair:true` = 支持 6 位码配对、
+// `name` = 主机名（复用现有字段）。
 struct RemoteHealth: Codable {
     let ok: Bool?
     let name: String?
@@ -67,4 +69,6 @@ struct RemoteHealth: Codable {
     let bindLAN: Bool?
     let port: UInt16?
     let authRequired: Bool?
+    let proto: Int?
+    let pair: Bool?
 }
