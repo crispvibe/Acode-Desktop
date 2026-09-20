@@ -582,7 +582,7 @@
 					CODE_SIGN_STYLE = Manual;
 					COMBINE_HIDPI_IMAGES = YES;
 					CURRENT_PROJECT_VERSION = 4;
-					DEVELOPMENT_TEAM = XY6Z92AMPS;
+					DEVELOPMENT_TEAM = "";
 					ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Codevoke/Info.plist;
@@ -592,7 +592,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0.2;
-				PRODUCT_BUNDLE_IDENTIFIER = vin.anna.ClaudeMac;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codevoke.mac;
 				PRODUCT_NAME = Codevoke;
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -609,7 +609,7 @@
 					CODE_SIGN_STYLE = Manual;
 					COMBINE_HIDPI_IMAGES = YES;
 					CURRENT_PROJECT_VERSION = 4;
-					DEVELOPMENT_TEAM = XY6Z92AMPS;
+					DEVELOPMENT_TEAM = "";
 					ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Codevoke/Info.plist;
@@ -619,7 +619,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0.2;
-				PRODUCT_BUNDLE_IDENTIFIER = vin.anna.ClaudeMac;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codevoke.mac;
 				PRODUCT_NAME = Codevoke;
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -641,7 +641,7 @@
 						"@loader_path/../Frameworks",
 					);
 					MACOSX_DEPLOYMENT_TARGET = 14.0;
-					PRODUCT_BUNDLE_IDENTIFIER = vin.anna.ClaudeMacTests;
+					PRODUCT_BUNDLE_IDENTIFIER = com.codevoke.mac.tests;
 					PRODUCT_NAME = "$(TARGET_NAME)";
 					SDKROOT = macosx;
 					SWIFT_VERSION = 5.0;
@@ -662,7 +662,7 @@
 						"@loader_path/../Frameworks",
 					);
 					MACOSX_DEPLOYMENT_TARGET = 14.0;
-					PRODUCT_BUNDLE_IDENTIFIER = vin.anna.ClaudeMacTests;
+					PRODUCT_BUNDLE_IDENTIFIER = com.codevoke.mac.tests;
 					PRODUCT_NAME = "$(TARGET_NAME)";
 					SDKROOT = macosx;
 					SWIFT_VERSION = 5.0;

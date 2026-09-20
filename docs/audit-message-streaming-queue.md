@@ -227,7 +227,7 @@
 
 ```bash
 # Mac App 启动:
-killall Codevoke 2>/dev/null; sleep 1; open /Users/oreo/Desktop/acode2.app; sleep 9
+killall Codevoke 2>/dev/null; sleep 1; open /Users/oreo/Desktop/Codevoke.app; sleep 9
 
 # Race(send 早于 set 50 ms,验证 500 ms 重试):
 python3 /tmp/qa_race3.py

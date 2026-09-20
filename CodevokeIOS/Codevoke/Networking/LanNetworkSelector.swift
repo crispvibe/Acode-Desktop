@@ -10,7 +10,7 @@ enum LanNetworkSelector {
             satisfied = path.status == .satisfied
             semaphore.signal()
         }
-        let queue = DispatchQueue(label: "vin.anna.codevoke.lan-path")
+        let queue = DispatchQueue(label: "com.codevoke.lan-path")
         monitor.start(queue: queue)
         _ = semaphore.wait(timeout: .now() + 1.0)
         monitor.cancel()

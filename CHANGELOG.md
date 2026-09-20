@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 0.3.0 · 开源化 + 纯局域网
+
+发布日期：2026-09-20
+
+### 架构变更
+
+- **删除后端**：`后端/`（Go API + 信令 + 管理后台）整体移除，仓库不再依赖任何云端服务。
+- **去认证**：账号登录、设备码、连接审批、transient token、Bearer 鉴权全部移除；同局域网任何设备可直接连入 host（`ws://host:18765/chat`）。
+- **纯局域网直连**：隧道（tunnel）/ WebRTC / 信令中转链路全部删除；客户端通过子网 `/health` 扫描发现 host，支持手动输入 `host:port` 并记住上次连接。
+- **开源化**：MIT License；清理已提交的 `node_modules`/`dist` 产物与个人标识（bundle id、签名证书、域名引用）。
+
+### 各端
+
+- macOS：`RemoteChatServer` 不再校验 token；移除账号/信令/LAN token 发布/隧道/WebRTC。
+- iOS：移除登录门与云端 transport；`LanSubnetProbe.discoverHealthHosts` + 手动连接；`remote.*` 旧 UserDefaults 键自动清理。
+- Android：同上；`RemoteChatConfig` 简化为 `host + port`；去掉 stream-webrtc-android / security-crypto 依赖。
+- Windows：移除 `account/`、`signaling/`、`device/`、`remoteChat/` 与隧道/WebRTC responder；`RemoteHostServer` 无鉴权；设置页仅保留 LAN host 开关；`appId` → `com.codevoke.windows`。
+
 ## 0.2.0 · 局域网多端
 
 **多端远程局域网优先连接与 Windows 客户端界面完善**

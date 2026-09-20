@@ -16,7 +16,7 @@ enum ProjectStoreError: LocalizedError {
 private final class FileTreeStatePersistenceQueue {
     static let shared = FileTreeStatePersistenceQueue()
 
-    private let queue = DispatchQueue(label: "vin.anna.codevoke.filetree-state-persist", qos: .utility)
+    private let queue = DispatchQueue(label: "com.codevoke.filetree-state-persist", qos: .utility)
     private let lock = NSLock()
     private var pending: [String: Set<String>] = [:]
     private var flushScheduled = false

@@ -4,7 +4,7 @@ import ChatUI
 import SwiftUI
 import UniformTypeIdentifiers
 
-let queuedRequestDragTypeIdentifier = "vin.anna.codevoke.queued-request"
+let queuedRequestDragTypeIdentifier = "com.codevoke.queued-request"
 let queuedRequestPasteboardType = NSPasteboard.PasteboardType(queuedRequestDragTypeIdentifier)
 
 extension String {

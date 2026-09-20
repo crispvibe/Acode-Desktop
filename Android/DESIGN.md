@@ -10,7 +10,7 @@
 - iOS 侧栏：`/Users/oreo/Desktop/Codevoke/CodevokeIOS/Codevoke/Views/RootView.swift`、`/Users/oreo/Desktop/Codevoke/CodevokeIOS/Codevoke/Views/SidebarView.swift`
 - iOS 远程设备与设置：`/Users/oreo/Desktop/Codevoke/CodevokeIOS/Codevoke/Views/DeviceListView.swift`、`/Users/oreo/Desktop/Codevoke/CodevokeIOS/Codevoke/Views/SettingsView.swift`
 - 截图基准：`/Users/oreo/Desktop/Codevoke/设计图/Android-Compose-设计基准/screenshots`
-- Android 当前落点：`/Users/oreo/Desktop/Codevoke/Android/app/src/main/java/com/acode/android/ui/theme`、`/Users/oreo/Desktop/Codevoke/Android/app/src/main/java/com/acode/android/ui/components`
+- Android 当前落点：`/Users/oreo/Desktop/Codevoke/Android/app/src/main/java/com/codevoke/android/ui/theme`、`/Users/oreo/Desktop/Codevoke/Android/app/src/main/java/com/codevoke/android/ui/components`
 
 ## 产品气质
 

@@ -3,7 +3,7 @@ import ChatCore
 import Darwin
 import os
 
-private let remoteChatRouterLog = Logger(subsystem: "vin.anna.Codevoke", category: "RemoteChatRouter")
+private let remoteChatRouterLog = Logger(subsystem: "com.codevoke.mac", category: "RemoteChatRouter")
 
 struct RemoteChatServerConfiguration {
     let port: UInt16

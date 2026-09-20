@@ -123,7 +123,7 @@ private struct RemoteStreamEventCoalescer {
 final class RemoteChatServer {
     private let configuration: RemoteChatServerConfiguration
     private let router: RemoteChatRouter
-    private let queue = DispatchQueue(label: "vin.anna.codevoke.remote-chat-server", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.codevoke.remote-chat-server", qos: .userInitiated)
     private var listener: NWListener?
     var onDiagnosticsChanged: ((RemoteChatServerDiagnostics) -> Void)?
 

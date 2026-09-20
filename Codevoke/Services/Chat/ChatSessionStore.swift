@@ -11,7 +11,7 @@ enum ChatSessionStore {
     private static let indexFileName = "chat-sessions.json"
     private static let draftsFileName = "chat-drafts.json"
     private static let messagesDirectoryName = "chat-messages"
-    private static let persistenceQueue = DispatchQueue(label: "vin.anna.codevoke.chat-session-store", qos: .utility)
+    private static let persistenceQueue = DispatchQueue(label: "com.codevoke.chat-session-store", qos: .utility)
     static let storageKey = "claudemac"
 
     static func loadSessions() -> [ChatSessionRecord] {
@@ -320,7 +320,7 @@ enum ChatSessionStore {
 private final class DraftPersistenceQueue {
     static let shared = DraftPersistenceQueue()
 
-    private let queue = DispatchQueue(label: "vin.anna.codevoke.draft-persist", qos: .utility)
+    private let queue = DispatchQueue(label: "com.codevoke.draft-persist", qos: .utility)
     private let lock = NSLock()
     private var pending: [String: String] = [:]
     private var flushScheduled = false

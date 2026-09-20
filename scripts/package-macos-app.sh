@@ -11,11 +11,11 @@ CREATE_DMG="${CREATE_DMG:-1}"
 DMG_PATH="${DMG_PATH:-$ROOT/build/releases/codevoke-macos.dmg}"
 STRIP_SYMBOLS="${STRIP_SYMBOLS:-1}"
 NOTARIZE="${NOTARIZE:-0}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-acode-notary}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-codevoke-notary}"
 NOTARY_TIMEOUT="${NOTARY_TIMEOUT:-30m}"
 ENTITLEMENTS="$ROOT/Codevoke/Codevoke.entitlements"
-SIGNING_AUTHORITY="Developer ID Application: Zhang XueFeng (XY6Z92AMPS)"
-TEAM_ID="XY6Z92AMPS"
+SIGNING_AUTHORITY="${CODEVOKE_SIGNING_AUTHORITY:?set CODEVOKE_SIGNING_AUTHORITY to your signing identity, e.g. 'Developer ID Application: Your Name (TEAMID)'}"
+TEAM_ID="${CODEVOKE_TEAM_ID:?set CODEVOKE_TEAM_ID to your Apple team ID}"
 
 log() {
   printf '==> %s\n' "$*"
@@ -185,7 +185,7 @@ if [[ "$CREATE_DMG" == "1" ]]; then
   log "creating DMG: $DMG_PATH"
   mkdir -p "$(dirname "$DMG_PATH")"
   rm -f "$DMG_PATH"
-  DMG_STAGING="$(mktemp -d "${TMPDIR:-/tmp}/acode-dmg.XXXXXX")"
+  DMG_STAGING="$(mktemp -d "${TMPDIR:-/tmp}/codevoke-dmg.XXXXXX")"
   trap 'rm -rf "${DMG_STAGING:-}"' EXIT
   ditto "$DESTINATION" "$DMG_STAGING/$APP_NAME.app"
   hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_PATH"
