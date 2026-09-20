@@ -74,6 +74,10 @@ struct CommandBuilder {
             } else {
                 cliCommand = "kiro-cli chat --resume"
             }
+        case (.dsh, .newSession), (.dsh, .continueLast), (.dsh, .resume):
+            // dsh 没有裸 TUI 子命令（不带 --profile 会直接报错退出）；
+            // `dsh web` 启动交互 Web 工作台，会话恢复在 Web 界面内完成。
+            cliCommand = "dsh web"
         case (_, .newSession), (_, .continueLast), (_, .resume):
             cliCommand = selectedCLI.executable
         }

@@ -48,7 +48,9 @@ export const DEFAULT_CONTEXT_WINDOW = 200_000;
 
 /// 与 Mac 端 ChatModelCatalog.contextWindow 保持一致的模型上下文窗口表：
 /// GPT-5.5 真实窗口约 272K（登记为 275K）；Claude 的 [1m]/1m/1000k 变体是 1M；
-/// 其余模型按 200K 兜底。CLI 明确上报的 context_window 优先于这张表。
+/// DeepSeek 系（dsh 内置目录 deepseek-v4-flash/-pro 及 deepseek-chat/-reasoner 别名）
+/// 按 llm-deepseek 的 defaultContextWindow 登记为 1M；其余模型按 200K 兜底。
+/// CLI 明确上报的 context_window（dsh 的 usage_update.size 等）优先于这张表。
 export function contextWindowForModel(modelID: string | null | undefined): number {
   const raw = (modelID ?? "").trim().toLowerCase();
   if (!raw) {
@@ -59,6 +61,9 @@ export function contextWindowForModel(modelID: string | null | undefined): numbe
     return 275_000;
   }
   if (executionID === "claude-opus-4-7" || raw.includes("[1m]") || raw.includes("1m") || raw.includes("1000k")) {
+    return 1_000_000;
+  }
+  if (executionID.startsWith("deepseek")) {
     return 1_000_000;
   }
   return DEFAULT_CONTEXT_WINDOW;
@@ -74,7 +79,8 @@ export const chatCLIValues = [
   "copilot",
   "kimi",
   "agy",
-  "kiro"
+  "kiro",
+  "dsh"
 ] as const;
 
 export type ChatCLI = (typeof chatCLIValues)[number];
@@ -96,7 +102,8 @@ export const chatCLIDisplayNames: Record<ChatCLI, string> = {
   copilot: "Copilot",
   kimi: "Kimi",
   agy: "Antigravity",
-  kiro: "Kiro"
+  kiro: "Kiro",
+  dsh: "DeepSeek Harness"
 };
 
 /// cli 字符串 ≠ 二进制名（cursor→cursor-agent、kiro→kiro-cli）。
@@ -110,7 +117,8 @@ export const chatCLIDefaultCommands: Record<ChatCLI, string> = {
   copilot: "copilot",
   kimi: "kimi",
   agy: "agy",
-  kiro: "kiro-cli"
+  kiro: "kiro-cli",
+  dsh: "dsh"
 };
 export const chatPermissionModeSchema = z.enum(["ask", "autoEdit", "fullAccess"]);
 export const chatReasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh", "max"]);
@@ -457,11 +465,14 @@ export type ChatBackendEvent =
 /// 会在写回失败时假翻转成已回答，或在不支持的 CLI 上留着永远等不到回执的假按钮。
 export type ChatBackendAck = boolean | Promise<boolean>;
 
-/// claude（stdin control_response）与 codex（app-server JSON-RPC response）有会话内控制
-/// 回写通道，权限卡、AskUserQuestion、/compact 才能真正送达；其余 7 家通用 CLI 没有该
-/// 通道，respond*/sendCompact 在进程侧恒为 false——UI 据此不渲染可点的假按钮。
+/// claude（stdin control_response）、codex（app-server JSON-RPC response）与 dsh
+/// （ACP v1 session/request_permission 回执）有会话内控制回写通道，权限卡、
+/// AskUserQuestion、/compact 才能真正送达；其余 7 家通用 CLI 没有该通道，
+/// respond*/sendCompact 在进程侧恒为 false——UI 据此不渲染可点的假按钮。
+/// 注意 dsh 只实现了权限回执（ACP 无 elicitation/compact），interactive/compact
+/// 响应在进程侧仍返回 false，属于不触发路径而不是假按钮。
 export function chatCLISupportsInteractiveControls(cli: ChatCLI): boolean {
-  return cli === "claude" || cli === "codex";
+  return cli === "claude" || cli === "codex" || cli === "dsh";
 }
 
 export interface ChatPanelBackend {

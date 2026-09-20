@@ -13,6 +13,16 @@ struct ChatCLICapability: Codable, Equatable, Sendable {
     let errorMessage: String?
 
     var isAvailable: Bool { executablePath != nil && errorMessage == nil }
+
+    /// 该 CLI 是否有运行中权限应答通道：Codex 走 app-server 审批回写，
+    /// DeepSeek Harness 走 ACP `session/request_permission`。其余无头 CLI 的
+    /// ask 模式会卡死在永远等不到回应的权限提示上，前端用它做前置拒绝。
+    var supportsRuntimePermissionApprovals: Bool {
+        switch cli.visibleValue {
+        case .codex, .dsh: supportsAppServer
+        default: false
+        }
+    }
 }
 
 private actor ChatCLICapabilityCache {
@@ -78,7 +88,16 @@ enum ChatCLICapabilityProbe {
 
     static func probe(_ cli: CLIType) async -> ChatCLICapability {
         let visible = cli.visibleValue
-        guard let executable = await locateExecutable(candidates: visible.executableCandidates) else {
+        var executable = await locateExecutable(candidates: visible.executableCandidates)
+        if executable == nil, visible == .dsh {
+            // dsh 未直装时用 `npx -y @deepseek-ai/dsh` 兜底：executablePath 指向 npx，
+            // 后端/探测统一经 DshCommandLine 识别 basename 并补包名前缀。
+            executable = await locateExecutable(candidates: ["npx"])
+        }
+        guard let executable else {
+            let hint = visible == .dsh
+                ? "未找到 dsh，也未找到可用于 `npx -y @deepseek-ai/dsh` 兜底的 npx，请先安装 @deepseek-ai/dsh 或把它加入 PATH。"
+                : "未找到 \(visible.executableCandidates.joined(separator: " 或 "))，请先安装或把它加入 PATH。"
             return ChatCLICapability(
                 cli: visible,
                 executablePath: nil,
@@ -89,7 +108,7 @@ enum ChatCLICapabilityProbe {
                 supportsResume: false,
                 supportsContinue: false,
                 supportsAppServer: false,
-                errorMessage: "未找到 \(visible.executableCandidates.joined(separator: " 或 "))，请先安装或把它加入 PATH。"
+                errorMessage: hint
             )
         }
 
@@ -156,6 +175,43 @@ enum ChatCLICapabilityProbe {
                 supportsContinue: launchError == nil && (help.contains("--continue") || help.contains("--resume")),
                 supportsAppServer: false,
                 errorMessage: launchError
+            )
+        case .dsh:
+            // ACP stdio（dsh --profile acp）是内嵌集成路径：除可执行文件存在性外，
+            // 还要确认 acp profile 可用。npx 兜底时 executablePath 指向 npx，
+            // 参数统一经 DshCommandLine 补 `-y @deepseek-ai/dsh` 前缀；version
+            // 也重测一次拿到 dsh 自身版本而不是 npm 版本（首次触发 npx 下载，
+            // 给更长超时）。
+            let acpHelp = await ChatProcessRunner.run(
+                executable,
+                arguments: DshCommandLine.arguments(executablePath: executable, trailing: ["--profile", "acp", "--help"]),
+                timeout: 20
+            )
+            let acpText = acpHelp.stdout + "\n" + acpHelp.stderr
+            let acpAvailable = acpHelp.status == 0 && acpText.contains("Agent Client Protocol")
+            var probedVersion = version
+            if DshCommandLine.isNpxLauncher(executablePath: executable) {
+                let dshVersion = await ChatProcessRunner.run(
+                    executable,
+                    arguments: DshCommandLine.arguments(executablePath: executable, trailing: ["--version"]),
+                    timeout: 20
+                )
+                probedVersion = dshVersion.stdout.nonEmptyTrimmed
+                    ?? dshVersion.stderr.nonEmptyTrimmed
+                    ?? version
+            }
+            let acpError = launchError ?? (acpAvailable ? nil : "已找到 \(visible.displayName)：\(executable)，但不支持 ACP 模式（dsh --profile acp），请升级 @deepseek-ai/dsh。")
+            return ChatCLICapability(
+                cli: visible,
+                executablePath: executable,
+                version: probedVersion,
+                supportsStreamJSON: acpAvailable,
+                supportsStreamJSONInput: false,
+                supportsPermissionPromptTool: false,
+                supportsResume: acpAvailable,
+                supportsContinue: acpAvailable,
+                supportsAppServer: acpAvailable,
+                errorMessage: acpError
             )
         case .custom:
             return await probe(.claude)

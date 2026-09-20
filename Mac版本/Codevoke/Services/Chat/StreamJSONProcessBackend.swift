@@ -1,7 +1,8 @@
 import Darwin
 import Foundation
 
-/// 按 CLI 分发后端的工厂。Claude/Codex 走各自的专用实现，其余大厂 CLI
+/// 按 CLI 分发后端的工厂。Claude/Codex 走各自的专用实现，DeepSeek Harness 走
+/// AcpProcessBackend（ACP v1 JSON-RPC stdio），其余大厂 CLI
 /// （Cursor Agent / Gemini / Qwen / Copilot / Kimi / Antigravity / Kiro）
 /// 全部由 StreamJSONProcessBackend 以参数化方式驱动。
 enum ChatBackendFactory {
@@ -25,6 +26,8 @@ enum ChatBackendFactory {
             return StreamJSONProcessBackend(kind: .agy)
         case .kiro:
             return StreamJSONProcessBackend(kind: .kiro)
+        case .dsh:
+            return AcpProcessBackend()
         }
     }
 }

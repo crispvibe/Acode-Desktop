@@ -56,6 +56,7 @@ struct SettingsPageView: View {
         case kimi
         case agy
         case kiro
+        case dsh
 
         var id: String { rawValue }
 
@@ -70,6 +71,7 @@ struct SettingsPageView: View {
             case .kimi: "Kimi"
             case .agy: "Antigravity"
             case .kiro: "Kiro"
+            case .dsh: "DeepSeek Harness"
             }
         }
 
@@ -83,6 +85,8 @@ struct SettingsPageView: View {
         /// - kimi：~/.kimi-code/AGENTS.md（Kimi Code CLI 的 $KIMI_CODE_HOME 全局指令文件）
         /// - agy：~/.gemini/GEMINI.md（Antigravity 官方全局规则文件，与 Gemini CLI 共用）
         /// - kiro：~/.kiro/steering/AGENTS.md（全局 steering，AGENTS.md 始终注入会话）
+        /// - dsh：~/.dsh/AGENTS.md（dsh-agent-instructions 的 USER_GLOBAL_FILE，
+        ///   作为全局 baseline 注入每个会话）
         var relativePath: String {
             switch self {
             case .claude: ".claude/CLAUDE.md"
@@ -94,6 +98,7 @@ struct SettingsPageView: View {
             case .kimi: ".kimi-code/AGENTS.md"
             case .agy: ".gemini/GEMINI.md"
             case .kiro: ".kiro/steering/AGENTS.md"
+            case .dsh: ".dsh/AGENTS.md"
             }
         }
 
@@ -108,7 +113,7 @@ struct SettingsPageView: View {
                 "Antigravity 与 Gemini CLI 共用同一个全局规则文件，改动对两者同时生效。"
             case .kiro:
                 "Kiro 的全局规则保存在 ~/.kiro/steering/ 目录的 Markdown 文件中，这里编辑其中的 AGENTS.md，每个会话都会自动注入。"
-            case .claude, .codex, .gemini, .qwen, .copilot:
+            case .claude, .codex, .gemini, .qwen, .copilot, .dsh:
                 nil
             }
         }

@@ -554,8 +554,9 @@ function buildCapabilities() {
     cli,
     executableAvailable: true,
     supportsStreamJSONInput: true,
-    // 目前只有 Codex 走 app-server 协议；其余 CLI（含新接入 7 家）都是一次性 spawn + stdout 协议。
-    supportsAppServer: cli === "codex",
+    // Codex 走 app-server 协议，dsh 走 ACP v1——两者都是常驻 stdio 双向 JSON-RPC，
+    // 远端可依赖会话内回写（权限回执/取消）；其余 7 家是一次性 spawn + stdout 协议。
+    supportsAppServer: cli === "codex" || cli === "dsh",
     errorMessage: null
   }));
 }

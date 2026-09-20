@@ -35,6 +35,7 @@ import androidx.compose.material.icons.rounded.Nightlight
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -78,6 +79,7 @@ internal val cliCatalog = listOf(
     CliOption("kimi", "Kimi", "Moonshot Kimi CLI", Icons.Rounded.Nightlight),
     CliOption("agy", "Antigravity", "Google Antigravity CLI", Icons.Rounded.ArrowCircleUp),
     CliOption("kiro", "Kiro", "AWS Kiro CLI", Icons.Rounded.ElectricBolt),
+    CliOption("dsh", "DeepSeek Harness", "DeepSeek 官方 Harness，ACP 协议", Icons.Rounded.Waves),
 )
 
 // CLI id → 展示名；host 新增未收录的 cli 时兜底为首字母大写的原始值，避免空白。

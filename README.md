@@ -32,7 +32,7 @@ acode 是一个**免费开源**的 AI 编程工作台：AI 跑在你的电脑上
 - 📱 **手机指挥电脑 AI**：AI 在电脑上跑，发任务、看进度、批权限、回答问题，人不在电脑前活照样干
 - 🔌 **零配置连接**：同一 Wi-Fi 自动发现电脑，点一下就连上；出门在外扫码配对，IPv6 / 端口映射直连，不经过第三方服务器
 - 🛠 **每一步都看得见**：任务清单、读文件、搜索、diff、终端命令、子代理，全都渲染成卡片
-- ⚡ **9 家 CLI 随心切**：Claude Code、Codex、Cursor Agent、Gemini、Qwen Code、Copilot、Kimi、Antigravity、Kiro，模型和推理强度在对话里随手调
+- ⚡ **10 家 CLI 随心切**：Claude Code、Codex、Cursor Agent、Gemini、Qwen Code、Copilot、Kimi、Antigravity、Kiro、DeepSeek Harness，模型和推理强度在对话里随手调
 - � **免费开源**：个人使用完全免费，代码全部公开，想接别的 CLI（Aider、OpenCode、Goose…）欢迎 PR
 - 🖥 **四端齐全**：macOS / Windows 当电脑端，iOS / Android 当手机端
 

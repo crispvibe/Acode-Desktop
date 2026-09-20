@@ -32,7 +32,7 @@ Pick the desktop build that matches your chip; all artifacts are on the [latest 
 - 📱 **Drive desktop AI from your phone**: the AI runs on your computer — send tasks, watch progress, approve permissions, answer its questions, even while away from the desk
 - 🔌 **Zero-config connect**: auto-discovers the host on the same Wi-Fi, one tap to connect; on the go, scan a QR code to pair — IPv6 / port-mapping direct connect, no third-party servers
 - 🛠 **See every step**: task lists, file reads, search, diffs, terminal commands, sub-agents — each rendered as a card
-- ⚡ **9 CLIs, switch freely**: Claude Code, Codex, Cursor Agent, Gemini, Qwen Code, Copilot, Kimi, Antigravity, Kiro — model and reasoning effort adjustable mid-conversation
+- ⚡ **10 CLIs, switch freely**: Claude Code, Codex, Cursor Agent, Gemini, Qwen Code, Copilot, Kimi, Antigravity, Kiro, DeepSeek Harness — model and reasoning effort adjustable mid-conversation
 - � **Free & open source**: free for personal use, all code public — want another CLI (Aider, OpenCode, Goose…)? PRs welcome
 - 🖥 **Four platforms**: macOS / Windows as hosts, iOS / Android as clients
 

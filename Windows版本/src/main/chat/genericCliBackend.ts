@@ -10,8 +10,10 @@ import type {
 } from "../../shared/chat.js";
 import { chatCLIDefaultCommands, chatCLIDisplayNames, type ChatCLI } from "../../shared/chat.js";
 
-/// 除 claude/codex 外接入的 7 个大厂 CLI。
-export type GenericCLIKind = Exclude<ChatCLI, "claude" | "codex">;
+/// 除 claude/codex 外接入的 7 个大厂 CLI。dsh（DeepSeek Harness）走 ACP v1 双向
+/// JSON-RPC，不属于这类"一次性 spawn + stdout 行解析"的通用后端，由
+/// processChatBackend 的 startDsh 独立驱动。
+export type GenericCLIKind = Exclude<ChatCLI, "claude" | "codex" | "dsh">;
 
 type JSONRecord = Record<string, unknown>;
 
@@ -213,6 +215,35 @@ function powershellShim(command: string, args: string[]): SpawnTarget {
     file: "powershell.exe",
     args: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", invocation]
   };
+}
+
+/// PATH 可解析性检查（dsh → npx 兜底要用）：win32 复用 where.exe，与
+/// resolveSpawnTarget 同一套解析；POSIX 用 which。显式路径（含 / \\ 或绝对路径）
+/// 直接放行——交给 spawn 报真实错误比预检误报更诚实。
+export async function commandResolvableOnPath(command: string): Promise<boolean> {
+  if (!command.trim()) {
+    return false;
+  }
+  if (path.isAbsolute(command) || command.includes("/") || command.includes("\\")) {
+    return true;
+  }
+  if (process.platform === "win32") {
+    return (await resolveWindowsExecutable(command)) !== null;
+  }
+  try {
+    const { stdout } = await execFileAsync("which", [command], { timeout: 5000, windowsHide: true });
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/// dsh 的 npx 零安装兜底：当启动命令解析为 npx（含 npx.cmd / 显式 npx 路径）时，
+/// 前置 `-y @deepseek-ai/dsh`；其余命令原样透传。手动按 / \\ 切分 basename——
+/// path.basename 在 POSIX 上不识别 Windows 反斜杠路径。
+export function dshRunArgs(command: string, args: string[]): string[] {
+  const base = (command.split(/[\\/]/).pop() ?? command).replace(/\.(cmd|bat|exe)$/i, "").toLowerCase();
+  return base === "npx" ? ["-y", "@deepseek-ai/dsh", ...args] : args;
 }
 
 // ---------------------------------------------------------------------------

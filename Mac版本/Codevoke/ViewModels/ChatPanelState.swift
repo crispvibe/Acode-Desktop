@@ -695,8 +695,9 @@ final class ChatPanelController: ObservableObject {
             appendError("当前 Codex 版本不支持 app-server，无法在内嵌对话中启动。")
             return false
         }
-        if request.permissionMode == .ask, visibleCLI != .codex {
-            // 除 Codex（app-server 审批回写）外，其余 CLI 的无头进程都没有运行中
+        if request.permissionMode == .ask, !capability.supportsRuntimePermissionApprovals {
+            // 除 Codex（app-server 审批回写）和 DeepSeek Harness（ACP
+            // session/request_permission）外，其余 CLI 的无头进程都没有运行中
             // 权限应答通道，ask 模式会卡死在永远不会到达的权限提示上。
             status = .unsupportedVersion
             let reason: String
@@ -704,6 +705,8 @@ final class ChatPanelController: ObservableObject {
                 reason = capability.supportsStreamJSONInput
                     ? "当前 Claude Code CLI 未公开 stdin 权限 allow/deny 回写协议。"
                     : "当前 Claude Code 版本不支持 stream-json stdin 输入。"
+            } else if visibleCLI == .dsh {
+                reason = "当前 DeepSeek Harness 的 ACP 通道不可用（dsh --profile acp 探测失败）。"
             } else {
                 reason = "当前 \(visibleCLI.displayName) 无头模式不支持运行中权限审批。"
             }

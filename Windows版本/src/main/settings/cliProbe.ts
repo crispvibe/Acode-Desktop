@@ -43,14 +43,31 @@ export async function probeCLI(rawKind: unknown, command?: string): Promise<CLIP
     })
     : null;
 
+  // dsh 官方零安装路径：本地没有 dsh 但 PATH 里有 npx 时，用
+  // `npx -y @deepseek-ai/dsh` 探测版本；首次运行要下载包，超时放宽到 30s。
+  let npxFallback: { path: string; version: string | null; help: string | null } | null = null;
+  if (kind === "dsh" && !resolvedPath) {
+    const npxPath = await resolveCommandPath("npx").catch(() => null);
+    if (npxPath) {
+      npxFallback = {
+        path: npxPath,
+        version: await runForText("npx", ["-y", "@deepseek-ai/dsh", "--version"], 30_000).catch((error: unknown) => {
+          errors.push(toErrorMessage("npx -y @deepseek-ai/dsh --version", error));
+          return null;
+        }),
+        help: null
+      };
+    }
+  }
+
   const appServerText = appServerHelp ?? "";
   return cliProbeResultSchema.parse({
     kind,
     command: targetCommand,
-    resolvedPath,
-    found: Boolean(resolvedPath),
-    version,
-    help,
+    resolvedPath: resolvedPath ?? npxFallback?.path ?? null,
+    found: Boolean(resolvedPath) || Boolean(npxFallback?.version),
+    version: version ?? npxFallback?.version ?? null,
+    help: help ?? npxFallback?.help ?? null,
     capabilities: {
       appServer: Boolean(appServerHelp),
       appServerHelp: Boolean(appServerHelp),
@@ -67,10 +84,10 @@ async function resolveCommandPath(command: string): Promise<string | null> {
   return output?.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? null;
 }
 
-async function runForText(command: string, args: string[]): Promise<string | null> {
+async function runForText(command: string, args: string[], timeoutMs = 5000): Promise<string | null> {
   const target = await resolveSpawnTarget(command, args);
   const result = await execFileAsync(target.file, target.args, {
-    timeout: 5000,
+    timeout: timeoutMs,
     windowsHide: true,
     maxBuffer: 512 * 1024
   });

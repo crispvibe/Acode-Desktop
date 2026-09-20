@@ -41,7 +41,7 @@ function eventsOfType<T extends ChatBackendEvent["type"]>(events: ChatBackendEve
 }
 
 describe("chatCLI contract tables", () => {
-  it("covers all 9 CLI strings with display names and default commands", () => {
+  it("covers all 10 CLI strings with display names and default commands", () => {
     const expected: Record<ChatCLI, [string, string]> = {
       claude: ["Claude Code", "claude"],
       codex: ["Codex", "codex"],
@@ -51,7 +51,8 @@ describe("chatCLI contract tables", () => {
       copilot: ["Copilot", "copilot"],
       kimi: ["Kimi", "kimi"],
       agy: ["Antigravity", "agy"],
-      kiro: ["Kiro", "kiro-cli"]
+      kiro: ["Kiro", "kiro-cli"],
+      dsh: ["DeepSeek Harness", "dsh"]
     };
     for (const [cli, [displayName, command]] of Object.entries(expected) as Array<[ChatCLI, [string, string]]>) {
       expect(chatCLIDisplayNames[cli]).toBe(displayName);

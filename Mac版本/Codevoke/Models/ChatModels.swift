@@ -92,6 +92,19 @@ enum ChatModelCatalog {
             return [
                 ChatModelOption(id: "default", title: "默认", cli: .kiro)
             ]
+        case .dsh:
+            // 模型目录来自 `dsh --profile acp` session/new 返回的 configOptions 里
+            // deepseek-official 官方 provider 组（本地 0.1.5-rc.1 实测）。ACP 侧
+            // 的取值是 ["deepseek-official", "<model>"] 的 JSON 元组，这里只存
+            // model 段，由 AcpProcessBackend 组装；用户在 ~/.dsh/settings.yaml
+            // 自建的 provider 模型不内置，可通过"添加模型 ID"自定义。
+            return [
+                ChatModelOption(id: "default", title: "默认", cli: .dsh),
+                ChatModelOption(id: "deepseek-v4-flash", title: "DeepSeek V4 Flash", cli: .dsh),
+                ChatModelOption(id: "deepseek-v4-pro", title: "DeepSeek V4 Pro", cli: .dsh),
+                ChatModelOption(id: "deepseek-flash", title: "DeepSeek V4.1 Flash", cli: .dsh),
+                ChatModelOption(id: "deepseek-v4-flash-vision-exp", title: "DeepSeek V4 Flash Vision Exp", cli: .dsh)
+            ]
         case .custom:
             return options(for: .claude)
         }
@@ -224,6 +237,21 @@ enum ChatPermissionMode: String, CaseIterable, Codable, Identifiable, Equatable 
         case .fullAccess: "danger-full-access"
         }
     }
+
+    /// DSH 出厂配置（dsh-base cordis.patch.yml）用环境变量 DSH_PERMISSION_MODE
+    /// 同时驱动 sandbox-policy.mode 与 user-approval.policy：
+    /// read-only/workspace-write 走 ask（审批经 ACP session/request_permission
+    /// 回传到客户端），danger-full-access 走 never（自动批准、不发权限请求）。
+    /// 不设置时出厂默认是 danger-full-access，所以必须每次启动都显式下发。
+    /// .ask 映射到最严格的 read-only：读免费、写/命令都会触发审批；
+    /// .autoEdit 映射 workspace-write：工作区内文件编辑自动放行、越界才询问。
+    var dshPermissionMode: String {
+        switch self {
+        case .ask: "read-only"
+        case .autoEdit: "workspace-write"
+        case .fullAccess: "danger-full-access"
+        }
+    }
 }
 
 enum ChatReasoningEffort: String, CaseIterable, Codable, Identifiable, Equatable {
@@ -281,6 +309,16 @@ enum ChatReasoningEffort: String, CaseIterable, Codable, Identifiable, Equatable
 
     var codexConfigValue: String {
         self == .max ? ChatReasoningEffort.xhigh.rawValue : rawValue
+    }
+
+    /// DSH ACP `reasoning_effort` config option 的取值集合只有 off/low/high/max
+    /// （session/new 返回的 configOptions 实测确认）；把五级档位映射到最近档。
+    var dshConfigValue: String {
+        switch self {
+        case .low, .medium: "low"
+        case .high: "high"
+        case .xhigh, .max: "max"
+        }
     }
 }
 

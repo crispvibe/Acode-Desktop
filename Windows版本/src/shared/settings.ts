@@ -22,7 +22,10 @@ const cliLaunchEnvTable: Record<CLIKind, CLILaunchEnvNames> = {
   copilot: { apiKeyEnv: "GH_TOKEN" },
   kimi: { baseURLEnv: "KIMI_BASE_URL", apiKeyEnv: "KIMI_API_KEY" },
   agy: {},
-  kiro: { apiKeyEnv: "KIRO_API_KEY" }
+  kiro: { apiKeyEnv: "KIRO_API_KEY" },
+  /// dsh 的 llm-deepseek provider 承认 DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL 环境变量
+  /// 覆盖（优先级高于 settings.yaml 里的 api_key/base_url 字段）。
+  dsh: { baseURLEnv: "DEEPSEEK_BASE_URL", apiKeyEnv: "DEEPSEEK_API_KEY" }
 };
 
 export function cliLaunchEnvFor(kind: CLIKind | ChatCLI): CLILaunchEnvNames {
@@ -60,7 +63,7 @@ export const appendRuleSchema = z.object({
 
 export type AppendRule = z.infer<typeof appendRuleSchema>;
 
-/// 全局规则目标 = 全部 9 家 CLI（与 cliKindSchema 同源）。
+/// 全局规则目标 = 全部 10 家 CLI（与 cliKindSchema 同源）。
 export const globalRuleTargetSchema = cliKindSchema;
 export type GlobalRuleTarget = z.infer<typeof globalRuleTargetSchema>;
 
@@ -86,7 +89,8 @@ export const globalRulesSchema = z.object({
   copilot: globalRuleEntrySchema,
   kimi: globalRuleEntrySchema,
   agy: globalRuleEntrySchema,
-  kiro: globalRuleEntrySchema
+  kiro: globalRuleEntrySchema,
+  dsh: globalRuleEntrySchema
 });
 
 export type GlobalRules = z.infer<typeof globalRulesSchema>;
@@ -102,7 +106,8 @@ export const globalRulesPatchSchema = z.object({
   copilot: globalRuleSchema.partial().optional(),
   kimi: globalRuleSchema.partial().optional(),
   agy: globalRuleSchema.partial().optional(),
-  kiro: globalRuleSchema.partial().optional()
+  kiro: globalRuleSchema.partial().optional(),
+  dsh: globalRuleSchema.partial().optional()
 });
 
 export type GlobalRulesPatch = z.infer<typeof globalRulesPatchSchema>;
@@ -122,7 +127,8 @@ export function mergeGlobalRules(base: GlobalRules, patch: GlobalRulesPatch | un
 /// 各 CLI 全局指令文件相对用户主目录的路径（"/" 分隔）；null = 该 CLI 无全局指令文件机制，
 /// UI 标"不支持"禁用，不硬写。依据官方文档核实：agy（Antigravity）与 gemini 共用
 /// ~/.gemini/GEMINI.md；cursor 走 ~/.cursor/rules/*.mdc（需 alwaysApply frontmatter，
-/// 写盘时自动补）；kiro 走 ~/.kiro/steering/ 下的 AGENTS.md。
+/// 写盘时自动补）；kiro 走 ~/.kiro/steering/ 下的 AGENTS.md；dsh 的用户级指令文件固定
+/// 为 $DSH_HOME/AGENTS.md（默认 ~/.dsh/AGENTS.md，若用户导出 DSH_HOME 则由 dsh 自行解析）。
 export const globalRuleFilePaths: Record<GlobalRuleTarget, string | null> = {
   claude: ".claude/CLAUDE.md",
   codex: ".codex/AGENTS.md",
@@ -132,7 +138,8 @@ export const globalRuleFilePaths: Record<GlobalRuleTarget, string | null> = {
   copilot: ".copilot/copilot-instructions.md",
   kimi: ".kimi-code/AGENTS.md",
   agy: ".gemini/GEMINI.md",
-  kiro: ".kiro/steering/AGENTS.md"
+  kiro: ".kiro/steering/AGENTS.md",
+  dsh: ".dsh/AGENTS.md"
 };
 
 export const secretFieldSchema = z.enum(["apiKey", "authToken"]);
@@ -189,10 +196,11 @@ export const codexCLIProfileSchema = cliProfileBaseSchema.extend({
 
 export type CodexCLIProfile = z.infer<typeof codexCLIProfileSchema>;
 
-/// cursor/gemini/qwen/copilot/kimi/agy/kiro 共用的通用 profile：没有 kind 专属字段，
+/// cursor/gemini/qwen/copilot/kimi/agy/kiro/dsh 共用的通用 profile：没有 kind 专属字段，
 /// 靠 base 字段（executablePath/baseUrl/model/env/secretRefs）表达。
+/// dsh 运行期走 ACP 后端而非 genericCliBackend，但 profile 记录本身无专属字段，归这里。
 export const genericCLIProfileSchema = cliProfileBaseSchema.extend({
-  kind: z.enum(["cursor", "gemini", "qwen", "copilot", "kimi", "agy", "kiro"])
+  kind: z.enum(["cursor", "gemini", "qwen", "copilot", "kimi", "agy", "kiro", "dsh"])
 });
 
 export type GenericCLIProfile = z.infer<typeof genericCLIProfileSchema>;

@@ -40,7 +40,7 @@ final class ChatModelService: ObservableObject {
                 mergedOptions(ChatModelCatalog.options(for: .claude), claudeModels, configuredClaudeModels, customClaudeModels),
                 cli: .claude
             )
-        case .cursor, .gemini, .qwen, .copilot, .kimi, .agy, .kiro:
+        case .cursor, .gemini, .qwen, .copilot, .kimi, .agy, .kiro, .dsh:
             // 第三方 CLI：目录 + 自定义模型桶（复用 claude 桶，与 addCustomModel 的
             // 既有"非 codex 都入 claude 桶"约定一致）；不混入 claude 直连/relay 拉到的模型。
             return mergedOptions(ChatModelCatalog.options(for: cli), customClaudeModels)
@@ -335,7 +335,7 @@ final class ChatModelService: ObservableObject {
             let id = loadCodexConfiguredModel()
             configured = id.map { [ChatModelOption(id: $0, title: snapshotPrettify($0, cli: .codex), cli: .codex)] } ?? []
             configuredDefault = id?.nonEmptyTrimmed
-        case .cursor, .gemini, .qwen, .copilot, .kimi, .agy, .kiro:
+        case .cursor, .gemini, .qwen, .copilot, .kimi, .agy, .kiro, .dsh:
             configured = []
             configuredDefault = nil
         }

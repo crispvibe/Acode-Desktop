@@ -10,9 +10,10 @@ enum CLIType: String, CaseIterable, Codable, Identifiable {
     case kimi
     case agy
     case kiro
+    case dsh
     case custom
 
-    static let visibleCases: [CLIType] = [.claude, .codex, .cursor, .gemini, .qwen, .copilot, .kimi, .agy, .kiro]
+    static let visibleCases: [CLIType] = [.claude, .codex, .cursor, .gemini, .qwen, .copilot, .kimi, .agy, .kiro, .dsh]
 
     var id: String { rawValue }
 
@@ -34,6 +35,7 @@ enum CLIType: String, CaseIterable, Codable, Identifiable {
         case .kimi: "Kimi"
         case .agy: "Antigravity"
         case .kiro: "Kiro"
+        case .dsh: "DeepSeek Harness"
         }
     }
 
@@ -48,6 +50,7 @@ enum CLIType: String, CaseIterable, Codable, Identifiable {
         case .kimi: "kimi"
         case .agy: "agy"
         case .kiro: "kiro-cli"
+        case .dsh: "dsh"
         }
     }
 

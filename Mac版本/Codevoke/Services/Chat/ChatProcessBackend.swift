@@ -567,6 +567,18 @@ enum ChatCLIEnvironment {
     }
 }
 
+enum DshCommandLine {
+    /// dsh 未直装时 capability.executablePath 指向 npx，用 `-y @deepseek-ai/dsh`
+    /// 前缀把 npx 变成 dsh 启动器；直装时参数原样透传。
+    static func arguments(executablePath: String, trailing arguments: [String]) -> [String] {
+        isNpxLauncher(executablePath: executablePath) ? ["-y", "@deepseek-ai/dsh"] + arguments : arguments
+    }
+
+    static func isNpxLauncher(executablePath: String) -> Bool {
+        URL(fileURLWithPath: executablePath).lastPathComponent.lowercased().hasPrefix("npx")
+    }
+}
+
 enum ChatProcessRunner {
     static func run(_ executable: String, arguments: [String], timeout: TimeInterval = 8) async -> ChatProcessOutput {
         await Task.detached(priority: .utility) {

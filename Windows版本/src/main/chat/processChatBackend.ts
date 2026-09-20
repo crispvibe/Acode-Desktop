@@ -9,11 +9,14 @@ import type {
   ChatMessageAttachment,
   ChatMessageKind,
   ChatPermissionDecision,
+  ChatReasoningEffort,
   ChatRunOptions,
   ChatStartRequest
 } from "../../shared/chat.js";
 import {
+  commandResolvableOnPath,
   createGenericStreamState,
+  dshRunArgs,
   genericCLIRunSpec,
   resolveSpawnTarget,
   type GenericCLIKind
@@ -23,6 +26,22 @@ import { readJSONLLines } from "./jsonlReader.js";
 type JSONRecord = Record<string, unknown>;
 type EmitChatEvent = (event: ChatBackendEvent) => void;
 type PendingCodexRequest = "initialize" | "openThread" | "startTurn" | "interrupt" | "compact";
+
+/// dsh ACP 在途请求的种类。resumeSession 与 openSession 分开是因为 resume 失败要
+/// 降级回 session/new（dsh 对不可恢复会话/cwd 不匹配返回 invalidParams）。
+type PendingDshRequest = "initialize" | "openSession" | "resumeSession" | "setConfig" | "prompt" | "closeSession";
+
+/// ACP session/request_permission 的可选项：dsh 目前只发 allow-once / reject-once。
+interface DshPermissionOption {
+  optionId: string;
+  name: string;
+  kind: string;
+}
+
+interface PendingDshPermission {
+  id: unknown;
+  options: DshPermissionOption[];
+}
 
 interface PendingApproval {
   id: unknown;
@@ -117,6 +136,18 @@ export class ChatProcessRun {
   private activeThreadID: string | null = null;
   private activeTurnID: string | null = null;
   private waitingForCompactResult = false;
+  private nextDshID = 1;
+  private pendingDshRequests = new Map<string, PendingDshRequest>();
+  private pendingDshPermissions = new Map<string, PendingDshPermission>();
+  private dshSessionID: string | null = null;
+  private dshRequestedResumeID: string | null = null;
+  /// initialize 收到任何 JSON-RPC 响应即视为 ACP 握手成立；握手前进程就退出
+  /// （老版本没有 --profile acp）才允许降级 headless。
+  private dshDidHandshake = false;
+  /// set_config_option 必须在 session/prompt 之前落定——dsh 在 prompt 准入时
+  /// 快照当前路由，并发的配置变更可能赶不上这一轮。
+  private dshPendingConfigOps = 0;
+  private dshPromptSent = false;
 
   constructor(
     private readonly request: ChatStartRequest,
@@ -135,6 +166,8 @@ export class ChatProcessRun {
         await this.startCodex();
       } else if (cli === "claude") {
         await this.startClaudeWithFallbacks();
+      } else if (cli === "dsh") {
+        await this.startDsh();
       } else {
         await this.startGenericCLI(cli);
       }
@@ -150,6 +183,8 @@ export class ChatProcessRun {
       this.pendingApprovals.clear();
       this.pendingInteractiveRequests.clear();
       this.pendingClaudeControls.clear();
+      this.pendingDshRequests.clear();
+      this.pendingDshPermissions.clear();
     }
   }
 
@@ -165,6 +200,10 @@ export class ChatProcessRun {
       });
       this.pendingCodexRequests.set(String(id), "interrupt");
     }
+    // ACP 的取消通道是 session/cancel 通知（无响应）；发完照常走统一停止路径。
+    if (this.request.options.cli === "dsh" && this.dshSessionID) {
+      this.sendDshNotification("session/cancel", { sessionId: this.dshSessionID });
+    }
     this.emitTerminal({ type: "failed", message: `${this.request.options.cli} 已停止。` });
     this.stopProcess();
   }
@@ -177,6 +216,16 @@ export class ChatProcessRun {
       }
       this.pendingApprovals.delete(requestID);
       return this.sendCodexResponse(approval.id, this.codexApprovalResult(approval, decision));
+    }
+
+    // dsh ACP：session/request_permission 的回执是 {outcome} JSON-RPC 响应。
+    if (this.request.options.cli === "dsh") {
+      const pending = this.pendingDshPermissions.get(requestID);
+      if (!pending) {
+        return false;
+      }
+      this.pendingDshPermissions.delete(requestID);
+      return this.sendDshResponse(pending.id, dshPermissionOutcome(decision, pending.options));
     }
 
     // 通用 CLI（cursor/gemini/qwen/copilot/kimi/agy/kiro）没有 stdin 权限回执通道，
@@ -567,6 +616,358 @@ export class ChatProcessRun {
       }
     }, spec.displayName);
     this.finishFromProcessResult(result, spec.displayName);
+  }
+
+  /// DeepSeek Harness 走 ACP v1（NDJSON JSON-RPC over stdio）：
+  ///   initialize → session/new（或 session/resume）→ session/set_config_option
+  ///   （模型 / reasoning_effort，仅当服务端广播了匹配选项）→ session/prompt。
+  /// stdout 是协议专用通道，只按 JSON-RPC 帧解析，协议帧绝不进可见 transcript；
+  /// stderr 照旧由 consumeChildStreams 转 commandOutput。
+  /// initialize 握手之前进程就退出（老版本没有 --profile acp）时降级为
+  /// `--profile headless` 一次性运行——只在没有任何可见输出的前提下重跑，
+  /// 避免同一任务被执行两次。
+  private async startDsh(): Promise<void> {
+    const command = await this.dshCommand();
+    const child = await this.spawnDsh(command, ["--profile", "acp"]);
+    this.child = child;
+    const initializeID = this.sendDshRequest("initialize", {
+      protocolVersion: 1,
+      clientCapabilities: {},
+      clientInfo: { name: "acode", title: "acode", version: "0.1.0" }
+    });
+    this.pendingDshRequests.set(String(initializeID), "initialize");
+
+    const result = await this.consumeChildStreams(child, (line) => {
+      for (const event of this.eventsFromDshLine(line)) {
+        this.emitAndMark(event);
+      }
+    }, "DeepSeek Harness");
+
+    if (!this.dshDidHandshake && !this.didInterrupt && !this.didEmitTerminalEvent) {
+      this.emit({
+        type: "appendMessage",
+        kind: "system",
+        title: "DeepSeek Harness",
+        subtitle: "fallback",
+        text: "--profile acp 握手前进程已退出（可能是不支持 ACP 的版本），降级为 --profile headless 一次性运行。",
+        status: "retry"
+      });
+      await this.startDshHeadless(command);
+      return;
+    }
+    this.finishFromProcessResult(result, "DeepSeek Harness");
+  }
+
+  /// headless 兜底：`dsh --profile headless <task>`，stdout 只承载最终答复文本，
+  /// reasoning/diagnostics 走 stderr。没有会话与权限通道，权限卡/会话恢复在此
+  /// 路径下不生效（process 侧 respondToPermission 找不到 pending 会返回 false）。
+  private async startDshHeadless(command: string): Promise<void> {
+    const prompt = promptWithAttachments(this.request.prompt, this.request.attachments);
+    const child = await this.spawnDsh(command, ["--profile", "headless", prompt]);
+    this.child = child;
+    const result = await this.consumeChildStreams(child, (line) => {
+      if (!line.trim()) {
+        return;
+      }
+      this.emitAndMark({
+        type: "appendDelta",
+        kind: "assistant",
+        title: "assistant",
+        subtitle: "DeepSeek Harness",
+        text: `${line}\n`,
+        status: "streaming"
+      });
+    }, "DeepSeek Harness");
+    this.finishFromProcessResult(result, "DeepSeek Harness");
+  }
+
+  /// dsh 启动命令：executablePath 是默认命令 "dsh"（chatStore 总是填默认命令）时，
+  /// PATH 找不到 dsh 但有 npx 就回退官方零安装路径 `npx -y @deepseek-ai/dsh`
+  /// （dshRunArgs 负责前置参数）；用户显式配置的命令/路径（含自己填的 npx）
+  /// 原样使用，错误交给 spawn 如实上报。
+  private async dshCommand(): Promise<string> {
+    const configured = this.request.options.executablePath.trim();
+    const isDefault = !configured || configured.toLowerCase() === "dsh";
+    if (!isDefault) {
+      return configured;
+    }
+    if (await commandResolvableOnPath("dsh")) {
+      return "dsh";
+    }
+    if (await commandResolvableOnPath("npx")) {
+      this.emit({
+        type: "appendMessage",
+        kind: "system",
+        title: "DeepSeek Harness",
+        subtitle: "spawn",
+        text: "PATH 中未找到 dsh，改用 npx -y @deepseek-ai/dsh 启动（首次运行需下载，可能较慢）。",
+        status: "done"
+      });
+      return "npx";
+    }
+    // 两边都没有：仍返回 dsh，让 spawn 的 error 事件报真实 ENOENT。
+    return "dsh";
+  }
+
+  private async spawnDsh(command: string, args: string[]): Promise<ChildProcessWithoutNullStreams> {
+    const target = await resolveSpawnTarget(command, dshRunArgs(command, args));
+    return spawn(target.file, target.args, {
+      cwd: this.dshCwd(),
+      env: this.processEnvironment(),
+      shell: false,
+      windowsHide: true
+    });
+  }
+
+  /// session/new 的 cwd 必须绝对路径（dsh 校验 isAbsolute 且不支持 additionalDirectories）。
+  private dshCwd(): string {
+    return path.resolve(this.request.options.workingDirectory?.trim() || this.request.options.projectPath);
+  }
+
+  /// ACP stdout 帧分派：我方请求的响应（按 pending 关联）→ agent→client 请求
+  /// （session/request_permission 等）→ 通知（session/update）。
+  private eventsFromDshLine(line: string): ChatBackendEvent[] {
+    const object = parseJSONObject(line);
+    if (!object) {
+      // stdout 理论上是纯协议帧；混入的非 JSON 行保留为 raw 便于诊断。
+      return line.trim()
+        ? [{ type: "appendMessage", kind: "rawOutput", title: "raw", subtitle: "DeepSeek Harness", text: line, status: "stream" }]
+        : [];
+    }
+
+    const id = object.id;
+    const idKey = requestKey(id);
+    const pending = idKey ? this.pendingDshRequests.get(idKey) : undefined;
+    if (pending && idKey) {
+      this.pendingDshRequests.delete(idKey);
+      return this.eventsFromDshResponse(object, pending);
+    }
+
+    const method = stringValue(object.method);
+    if (!method) {
+      // 未跟踪的响应 / 无 method 的畸形帧：丢弃。
+      return [];
+    }
+    if (id !== undefined && id !== null) {
+      if (method === "session/request_permission") {
+        return this.eventsFromDshPermissionRequest(object, id);
+      }
+      this.sendDshErrorResponse(id, -32601, `acode Windows 暂不支持 ACP client request: ${method}`);
+      return [];
+    }
+    if (method === "session/update") {
+      return dshUpdateEvents(recordValue(object.params), "DeepSeek Harness");
+    }
+    return [];
+  }
+
+  private eventsFromDshResponse(object: JSONRecord, pending: PendingDshRequest): ChatBackendEvent[] {
+    const error = recordValue(object.error);
+
+    if (pending === "initialize") {
+      this.dshDidHandshake = true;
+      if (error) {
+        this.emitTerminal({ type: "failed", message: `dsh initialize 失败：${dshErrorText(error)}` });
+        this.stopProcess();
+        return [];
+      }
+      this.requestDshSession();
+      return [{ type: "updateStreamingStatus", status: "DeepSeek Harness 已连接" }];
+    }
+
+    if (pending === "openSession" || pending === "resumeSession") {
+      if (error) {
+        if (pending === "resumeSession") {
+          // resume 失败（会话不可恢复 / cwd 与持久化不符）→ 降级开新会话继续。
+          this.startDshNewSession();
+          return [{
+            type: "appendMessage",
+            kind: "system",
+            title: "DeepSeek Harness",
+            subtitle: "session",
+            text: `session/resume 失败（${dshErrorText(error)}），已改用新会话继续。`,
+            status: "retry"
+          }];
+        }
+        this.emitTerminal({ type: "failed", message: `dsh session/new 失败：${dshErrorText(error)}` });
+        this.stopProcess();
+        return [];
+      }
+      const result = recordValue(object.result) ?? {};
+      const sessionID = stringValue(result.sessionId) ?? (pending === "resumeSession" ? this.dshRequestedResumeID : null);
+      if (!sessionID) {
+        this.emitTerminal({ type: "failed", message: "dsh session/new 未返回 sessionId。" });
+        this.stopProcess();
+        return [];
+      }
+      this.dshSessionID = sessionID;
+      this.requestDshConfigOptions(result.configOptions);
+      return [
+        { type: "sessionID", externalSessionID: sessionID },
+        { type: "updateStreamingStatus", status: "session ready" }
+      ];
+    }
+
+    if (pending === "setConfig") {
+      this.dshPendingConfigOps -= 1;
+      const events: ChatBackendEvent[] = error
+        ? [{
+            type: "appendMessage",
+            kind: "system",
+            title: "DeepSeek Harness",
+            subtitle: "config",
+            text: `dsh 配置项未应用：${dshErrorText(error)}`,
+            status: "done"
+          }]
+        : [];
+      if (this.dshPendingConfigOps <= 0) {
+        this.sendDshPrompt();
+      }
+      return events;
+    }
+
+    if (pending === "prompt") {
+      const stopReason = stringValue(recordValue(object.result)?.stopReason);
+      if (error) {
+        this.emitTerminal({ type: "failed", message: `dsh 本轮失败：${dshErrorText(error)}` });
+      } else if (stopReason === "cancelled" && !this.didInterrupt) {
+        // 服务端侧取消（如权限拒绝导致的 cancelled）；用户主动 interrupt 的终态
+        // 已由 emitTerminal 先行发出，这里 no-op。
+        this.emitTerminal({ type: "failed", message: "DeepSeek Harness 本轮已取消。" });
+      } else {
+        this.emitTerminal({ type: "finished" });
+      }
+      this.closeDshSession();
+      return [];
+    }
+
+    // closeSession：teardown 回执，不需要事件。
+    return [];
+  }
+
+  /// resume/continueLast 且有外部会话 id 时走 session/resume（cwd 必须与持久化
+  /// 工作区一致，否则服务端返回 invalidParams → 回退 session/new）。
+  private requestDshSession(): void {
+    const options = this.request.options;
+    const resumeID = options.resumeSessionID?.trim() || this.request.session?.externalSessionID?.trim() || "";
+    if ((options.sessionMode === "resume" || options.sessionMode === "continueLast") && resumeID) {
+      this.dshRequestedResumeID = resumeID;
+      const id = this.sendDshRequest("session/resume", { sessionId: resumeID, cwd: this.dshCwd(), mcpServers: [] });
+      this.pendingDshRequests.set(String(id), "resumeSession");
+      return;
+    }
+    this.startDshNewSession();
+  }
+
+  private startDshNewSession(): void {
+    const id = this.sendDshRequest("session/new", { cwd: this.dshCwd(), mcpServers: [] });
+    this.pendingDshRequests.set(String(id), "openSession");
+  }
+
+  /// 会话就绪后应用模型/思考强度。dsh 只接受它广播过的选项 value（model 的
+  /// value 是 JSON.stringify([provider, model])），匹配不到就跳过并提示，
+  /// 不臆造选项值——硬发只会得到 invalidParams。
+  private requestDshConfigOptions(configOptions: unknown): void {
+    const plan = dshConfigSelections(this.request.options.modelID, this.request.options.reasoningEffort, configOptions);
+    if (plan.modelRequested && !plan.modelMatched) {
+      this.emit({
+        type: "appendMessage",
+        kind: "system",
+        title: "DeepSeek Harness",
+        subtitle: "model",
+        text: `模型 ${this.request.options.modelID} 不在 dsh 当前目录中，沿用 dsh 默认路由。`,
+        status: "done"
+      });
+    }
+    this.dshPendingConfigOps = plan.selections.length;
+    const sessionID = this.dshSessionID;
+    if (!sessionID || plan.selections.length === 0) {
+      this.sendDshPrompt();
+      return;
+    }
+    for (const selection of plan.selections) {
+      const id = this.sendDshRequest("session/set_config_option", {
+        sessionId: sessionID,
+        configId: selection.configId,
+        value: selection.value
+      });
+      this.pendingDshRequests.set(String(id), "setConfig");
+    }
+  }
+
+  private sendDshPrompt(): void {
+    const sessionID = this.dshSessionID;
+    if (!sessionID || this.dshPromptSent) {
+      return;
+    }
+    this.dshPromptSent = true;
+    const id = this.sendDshRequest("session/prompt", {
+      sessionId: sessionID,
+      prompt: [{ type: "text", text: promptWithAttachments(this.request.prompt, this.request.attachments) }]
+    });
+    this.pendingDshRequests.set(String(id), "prompt");
+  }
+
+  /// 权限请求 → 权限卡。fullAccess 时按语义代答 allow-once（ACP 没有 permission-mode
+  /// 参数，等价于通用 CLI 的 --yolo/--force 静态放行）；ask/autoEdit 照常弹卡等用户。
+  private eventsFromDshPermissionRequest(object: JSONRecord, id: unknown): ChatBackendEvent[] {
+    const params = recordValue(object.params) ?? {};
+    const requestID = requestKey(id) ?? randomUUID();
+    const toolCall = recordValue(params.toolCall);
+    const options = dshPermissionOptions(params.options);
+    const title = stringValue(toolCall?.title) ?? stringValue(params.title) ?? "工具调用";
+    const detail = [
+      stringValue(toolCall?.toolCallId) ?? stringValue(toolCall?.id),
+      options.map((option) => option.name).filter(Boolean).join(" / ")
+    ].filter((value): value is string => Boolean(value)).join("\n");
+
+    if (this.request.options.permissionMode === "fullAccess") {
+      this.sendDshResponse(id, dshPermissionOutcome("allow", options));
+      return [{
+        type: "appendMessage",
+        kind: "system",
+        title: "DeepSeek Harness",
+        subtitle: "permission",
+        text: `fullAccess：已自动允许 ${title}`,
+        status: "done"
+      }];
+    }
+    this.pendingDshPermissions.set(requestID, { id, options });
+    return [{ type: "permissionRequest", id: requestID, title, text: detail || title }];
+  }
+
+  /// prompt 落定后清场：best-effort 发 session/close，EOF stdin；dsh 在连接关闭时
+  /// 会自行 quiesce 所有会话，进程不退则由 stopProcessSoon 兜底。
+  private closeDshSession(): void {
+    const sessionID = this.dshSessionID;
+    if (sessionID) {
+      const id = this.sendDshRequest("session/close", { sessionId: sessionID });
+      this.pendingDshRequests.set(String(id), "closeSession");
+    }
+    this.closeStdin();
+    const child = this.child;
+    if (child) {
+      this.stopProcessSoon(child);
+    }
+  }
+
+  private sendDshRequest(method: string, params: unknown): number {
+    const id = this.nextDshID;
+    this.nextDshID += 1;
+    this.writeJSONObject({ id, method, params });
+    return id;
+  }
+
+  private sendDshNotification(method: string, params?: unknown): boolean {
+    return this.writeJSONObject(params === undefined ? { method } : { method, params });
+  }
+
+  private sendDshResponse(id: unknown, result: JSONRecord): boolean {
+    return this.writeJSONObject({ id, result });
+  }
+
+  private sendDshErrorResponse(id: unknown, code: number, message: string): boolean {
+    return this.writeJSONObject({ id, error: { code, message } });
   }
 
   private spawnCLI(command: string, args: string[]): ChildProcessWithoutNullStreams {
@@ -2311,4 +2712,297 @@ function isVisibleOutput(event: ChatBackendEvent): boolean {
     return true;
   }
   return event.type === "appendMessage" && event.kind !== "system" && event.kind !== "rawOutput" && event.text.length > 0;
+}
+
+// ---------------------------------------------------------------------------
+// DeepSeek Harness ACP helpers（纯函数，可单测）
+// ---------------------------------------------------------------------------
+
+/// ACP session/update 通知 → ChatBackendEvent。params 形状 {sessionId, update:{...}}，
+/// update.sessionUpdate 判别式（已对 0.1.5-rc.2 发包源码核验）：
+/// - agent_message_chunk / agent_thought_chunk：{messageId, content:{type:"text",text}}，
+///   每条都是"已提交块"级别的完整文本，直接作为 delta 追加；
+/// - tool_call：{toolCallId,title,kind,status:"in_progress",rawInput}；
+/// - tool_call_update：{toolCallId,status:"completed"|"failed",content:[{type:"content",content}]};
+/// - usage_update：{used,size}（size = 当前模型的 contextWindow）；
+/// - config_option_update / user_message_chunk / plan 等：静默。
+export function dshUpdateEvents(params: JSONRecord | null, displayName: string): ChatBackendEvent[] {
+  const update = recordValue(params?.update) ?? params;
+  if (!update) {
+    return [];
+  }
+  const sessionUpdate = stringValue(update.sessionUpdate) ?? "";
+
+  if (sessionUpdate === "agent_message_chunk" || sessionUpdate === "agent_thought_chunk") {
+    const text = dshContentText(update.content);
+    if (!text) {
+      return [];
+    }
+    const kind: ChatMessageKind = sessionUpdate === "agent_thought_chunk" ? "reasoning" : "assistant";
+    return [{
+      type: "appendDelta",
+      kind,
+      title: kind === "reasoning" ? "thinking" : "assistant",
+      subtitle: displayName,
+      text,
+      status: "streaming",
+      requestID: stringValue(update.messageId)
+    }];
+  }
+
+  if (sessionUpdate === "tool_call") {
+    const status = (stringValue(update.status) ?? "").toLowerCase();
+    const name = stringValue(update.title) ?? "tool";
+    if (["completed", "failed", "cancelled"].includes(status)) {
+      return [{
+        type: "appendMessage",
+        kind: "toolResult",
+        title: name,
+        subtitle: displayName,
+        text: dshToolCallContentText(update.content) || compactText(update.rawInput),
+        status: status === "failed" ? "failed" : "done",
+        requestID: stringValue(update.toolCallId)
+      }];
+    }
+    return [{
+      type: "appendMessage",
+      kind: "toolCall",
+      title: name,
+      subtitle: displayName,
+      text: toolCallText(name, update.rawInput ?? update.input),
+      status: "streaming",
+      requestID: stringValue(update.toolCallId)
+    }];
+  }
+
+  if (sessionUpdate === "tool_call_update") {
+    const status = (stringValue(update.status) ?? "").toLowerCase();
+    const inFlight = status === "in_progress" || status === "pending";
+    return [{
+      type: "appendMessage",
+      kind: inFlight ? "toolCall" : "toolResult",
+      title: stringValue(update.title) ?? "tool_result",
+      subtitle: displayName,
+      text: dshToolCallContentText(update.content) || compactText(update),
+      status: inFlight ? "streaming" : status === "failed" ? "failed" : "done",
+      requestID: stringValue(update.toolCallId)
+    }];
+  }
+
+  if (sessionUpdate === "usage_update") {
+    const used = intValue(update.used) ?? 0;
+    const size = intValue(update.size) ?? intValue(update.total) ?? 0;
+    return used > 0 || size > 0 ? [{ type: "tokenUsage", used, total: size }] : [];
+  }
+
+  return [];
+}
+
+/// session/request_permission 的 options[]：{optionId,name,kind}，
+/// kind ∈ allow_once/allow_always/reject_once/reject_always。
+export function dshPermissionOptions(value: unknown): DshPermissionOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => recordValue(entry))
+    .filter((entry): entry is JSONRecord => Boolean(entry))
+    .map((entry) => ({
+      optionId: stringValue(entry.optionId) ?? stringValue(entry.id) ?? "",
+      name: stringValue(entry.name) ?? stringValue(entry.label) ?? "",
+      kind: stringValue(entry.kind) ?? ""
+    }))
+    .filter((entry) => entry.optionId.length > 0);
+}
+
+/// 权限决策 → ACP outcome。dsh 目前只广播 allow-once/reject-once，allowForSession
+/// 语义降级为一次性 allow_*；deny 优先 reject_* 选项，实在没有允许类选项可用时
+/// 回 outcome=cancelled（服务端按取消处理）。
+export function dshPermissionOutcome(decision: ChatPermissionDecision, options: DshPermissionOption[]): JSONRecord {
+  const pick = (prefix: string): DshPermissionOption | null =>
+    options.find((option) => option.kind.startsWith(prefix))
+    ?? options.find((option) => option.optionId.startsWith(prefix))
+    ?? null;
+  const selected = (option: DshPermissionOption | null): JSONRecord =>
+    option
+      ? { outcome: { outcome: "selected", optionId: option.optionId } }
+      : { outcome: { outcome: "cancelled" } };
+  if (decision === "deny") {
+    return selected(pick("reject"));
+  }
+  return selected(pick("allow") ?? options[0] ?? null);
+}
+
+export interface DshConfigSelection {
+  configId: string;
+  value: string;
+}
+
+export interface DshConfigPlan {
+  selections: DshConfigSelection[];
+  modelRequested: boolean;
+  modelMatched: boolean;
+}
+
+/// 从 session/new|session/resume 返回的 configOptions 生成 set_config_option 序列。
+/// model 选项 value 是 JSON.stringify([provider, model])，必须原样回传；匹配不到
+/// 就不发（服务端对未广播的 value 一律 invalidParams）。reasoning_effort 同理，
+/// 按已广播档位找最近可用档。
+export function dshConfigSelections(modelID: string, reasoningEffort: ChatReasoningEffort, configOptions: unknown): DshConfigPlan {
+  const options = (Array.isArray(configOptions) ? configOptions : [])
+    .map((entry) => recordValue(entry))
+    .filter((entry): entry is JSONRecord => Boolean(entry));
+  const modelOption = options.find((option) => stringValue(option.id) === "model" || stringValue(option.category) === "model");
+  const effortOption = options.find((option) => stringValue(option.id) === "reasoning_effort" || stringValue(option.category) === "thought_level");
+
+  const selections: DshConfigSelection[] = [];
+  const modelRequested = isExplicitModelID(modelID);
+  let modelMatched = false;
+  if (modelRequested && modelOption) {
+    const value = dshModelOptionValue(modelOption.options, modelID.trim());
+    if (value !== null) {
+      modelMatched = true;
+      if (value !== stringValue(modelOption.currentValue)) {
+        selections.push({ configId: "model", value });
+      }
+    }
+  }
+
+  const effortValue = dshEffortOptionValue(effortOption, reasoningEffort);
+  if (effortValue !== null && effortOption && effortValue !== (stringValue(effortOption.currentValue) ?? "")) {
+    selections.push({ configId: "reasoning_effort", value: effortValue });
+  }
+  return { selections, modelRequested, modelMatched };
+}
+
+/// configOptions[].options 是分组形状 [{group,name,options:[{value,name}]}]，
+/// 兼容扁平 [{value,name}]。空字符串 value（Provider default）保留——它是合法选项。
+function flattenDshOptions(raw: unknown): Array<{ value: string; name: string }> {
+  const entries = Array.isArray(raw) ? raw : [];
+  const out: Array<{ value: string; name: string }> = [];
+  for (const entry of entries) {
+    const record = recordValue(entry);
+    if (!record) {
+      continue;
+    }
+    if (Array.isArray(record.options)) {
+      out.push(...flattenDshOptions(record.options));
+      continue;
+    }
+    const value = stringValue(record.value);
+    if (value !== null) {
+      out.push({ value, name: stringValue(record.name) ?? "" });
+    }
+  }
+  return out;
+}
+
+/// 匹配规则：value 全等 → JSON 解码的 model 段全等 → "provider/model" 全等 →
+/// option.name 全等（大小写不敏感）。命中返回原始 value（回传必须用完整 value）。
+function dshModelOptionValue(rawOptions: unknown, modelID: string): string | null {
+  const target = modelID.toLowerCase();
+  for (const option of flattenDshOptions(rawOptions)) {
+    if (option.value.toLowerCase() === target) {
+      return option.value;
+    }
+    const decoded = decodeDshModelValue(option.value);
+    if (decoded && (decoded.model.toLowerCase() === target || `${decoded.provider}/${decoded.model}`.toLowerCase() === target)) {
+      return option.value;
+    }
+    if (option.name.toLowerCase() === target) {
+      return option.value;
+    }
+  }
+  return null;
+}
+
+function decodeDshModelValue(value: string): { provider: string; model: string } | null {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed) && typeof parsed[0] === "string" && typeof parsed[1] === "string") {
+      return { provider: parsed[0], model: parsed[1] };
+    }
+  } catch {
+    // 非 JSON tuple —— 可能是别的实现，按不透明 value 处理。
+  }
+  return null;
+}
+
+/// ChatReasoningEffort → dsh 已广播的 reasoning_effort value 候选（按偏好顺序）。
+/// DeepSeek 官方档是 off|low|high|max 一级；medium/xhigh 没有精确档就取最近档，
+/// 都不在目录里返回 null（跳过，不臆造档位名）。
+const dshEffortCandidates: Record<ChatReasoningEffort, string[]> = {
+  low: ["low", ""],
+  medium: ["medium", "", "high", "low"],
+  high: ["high", "medium", "low", ""],
+  xhigh: ["xhigh", "max", "high", ""],
+  max: ["max", "xhigh", "high", ""]
+};
+
+function dshEffortOptionValue(option: JSONRecord | undefined, effort: ChatReasoningEffort): string | null {
+  if (!option) {
+    return null;
+  }
+  const available = new Set(flattenDshOptions(option.options).map((entry) => entry.value));
+  return dshEffortCandidates[effort].find((candidate) => available.has(candidate)) ?? null;
+}
+
+/// ACP content block → 文本：{type:"text",text}、字符串、嵌套 content、数组都兼容。
+function dshContentText(content: unknown): string {
+  const direct = stringValue(content);
+  if (direct !== null) {
+    return direct;
+  }
+  const record = recordValue(content);
+  if (record) {
+    const text = stringValue(record.text);
+    if (text !== null) {
+      return text;
+    }
+    if (record.content !== undefined) {
+      return dshContentText(record.content);
+    }
+    return "";
+  }
+  if (Array.isArray(content)) {
+    return content.map((item) => dshContentText(item)).filter(Boolean).join("\n");
+  }
+  return "";
+}
+
+/// tool_call/tool_call_update 的 content[]：[{type:"content",content:{type:"text",text}}]
+/// 为主，diff/resource 块退化为其文本字段，兜底 compactText。
+function dshToolCallContentText(content: unknown): string {
+  if (!Array.isArray(content)) {
+    return dshContentText(content);
+  }
+  const parts: string[] = [];
+  for (const item of content) {
+    const record = recordValue(item);
+    if (!record) {
+      continue;
+    }
+    const type = stringValue(record.type);
+    if (type === "content") {
+      const text = dshContentText(record.content);
+      if (text) {
+        parts.push(text);
+      }
+      continue;
+    }
+    const text = stringValue(record.text) ?? stringValue(record.diff) ?? stringValue(record.title);
+    if (text) {
+      parts.push(text);
+    }
+  }
+  return parts.join("\n");
+}
+
+function dshErrorText(error: JSONRecord): string {
+  const message = stringValue(error.message) ?? stringValue(error.data) ?? compactText(error);
+  const code = intValue(error.code);
+  if (code !== null) {
+    return `[${code}] ${message}`;
+  }
+  return message || "未知错误";
 }

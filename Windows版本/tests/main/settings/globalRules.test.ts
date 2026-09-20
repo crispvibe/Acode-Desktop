@@ -41,7 +41,7 @@ async function makeTempDir(): Promise<string> {
 }
 
 describe("globalRules schema 兼容性", () => {
-  it("旧配置只有 claude/codex 两键时其余 7 家补默认值", () => {
+  it("旧配置只有 claude/codex 两键时其余 8 家补默认值", () => {
     const parsed = appSettingsSchema.parse({
       globalRules: {
         claude: { enabled: false, path: "p", content: "A" },
@@ -94,10 +94,11 @@ describe("全局规则文件路径", () => {
     copilot: ".copilot/copilot-instructions.md",
     kimi: ".kimi-code/AGENTS.md",
     agy: ".gemini/GEMINI.md",
-    kiro: ".kiro/steering/AGENTS.md"
+    kiro: ".kiro/steering/AGENTS.md",
+    dsh: ".dsh/AGENTS.md"
   };
 
-  it("9 家 CLI 全部解析到官方约定的全局指令文件", () => {
+  it("10 家 CLI 全部解析到官方约定的全局指令文件", () => {
     for (const cli of chatCLIValues) {
       expect(resolveGlobalRuleFilePath(cli, "/home/u")).toBe(
         path.join("/home/u", ...expected[cli].split("/"))
@@ -112,6 +113,15 @@ describe("writeGlobalRuleFile", () => {
     const filePath = await writeGlobalRuleFile("qwen", "Q 规则", home);
     expect(filePath).toBe(path.join(home, ".qwen", "QWEN.md"));
     expect(await readFile(filePath!, "utf8")).toBe("Q 规则");
+  });
+
+  it("dsh 写到 <home>/.dsh/AGENTS.md，不加 cursor 式 frontmatter", async () => {
+    const home = await makeTempDir();
+    const filePath = await writeGlobalRuleFile("dsh", "D 规则", home);
+    expect(filePath).toBe(path.join(home, ".dsh", "AGENTS.md"));
+    const written = await readFile(filePath!, "utf8");
+    expect(written).toBe("D 规则");
+    expect(written).not.toContain("alwaysApply");
   });
 
   it("cursor 保存时自动补 alwaysApply frontmatter，自带 frontmatter 则尊重原样", async () => {

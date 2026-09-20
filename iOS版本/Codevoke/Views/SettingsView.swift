@@ -406,6 +406,7 @@ private let cliCatalog: [CLICatalogEntry] = [
     CLICatalogEntry(id: "kimi", title: "Kimi", subtitle: "Moonshot Kimi CLI", icon: "moon.fill"),
     CLICatalogEntry(id: "agy", title: "Antigravity", subtitle: "Google Antigravity CLI", icon: "arrow.up.circle.fill"),
     CLICatalogEntry(id: "kiro", title: "Kiro", subtitle: "AWS Kiro CLI", icon: "bolt.circle.fill"),
+    CLICatalogEntry(id: "dsh", title: "DeepSeek Harness", subtitle: "DeepSeek 官方 Harness，ACP 协议", icon: "water.waves"),
 ]
 
 /// CLI id → 展示名；host 新增未收录的 cli 时兜底为首字母大写的原始值，避免空白。

@@ -1117,6 +1117,8 @@ extension ChatPanelView {
             detail = "Claude 会使用 bypassPermissions"
         case .codex:
             detail = "Codex 会使用 danger-full-access"
+        case .dsh:
+            detail = "DeepSeek Harness 会使用 danger-full-access"
         case .cursor:
             detail = "Cursor Agent 会使用 --force"
         case .gemini, .qwen:
