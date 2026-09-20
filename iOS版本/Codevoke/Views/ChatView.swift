@@ -679,19 +679,26 @@ struct ChatView: View {
         guard !isAutoScrollScheduled else { return }
         isAutoScrollScheduled = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            scrollToMaterializedBottom(proxy)
+            // 跟随式滚动走轻量路径：仅 SwiftUI scrollTo 到已物化的锚点。
+            // 不能走 scrollToMaterializedBottom 的 direct 级联 —— 那条路径每个
+            // patch 都向 BottomScrollController 追加 5 次 layoutIfNeeded +
+            // setContentOffset，流式期间等于每帧强制整树布局，是卡顿主因。
+            // 此处未完全贴底也没关系，下一个增量会再次校正。
+            scrollToMaterializedBottom(proxy, directScroll: false)
             isAutoScrollScheduled = false
         }
     }
 
-    private func scrollToMaterializedBottom(_ proxy: ScrollViewProxy) {
+    private func scrollToMaterializedBottom(_ proxy: ScrollViewProxy, directScroll: Bool = true) {
         if let lastRowID = viewModel.messageRows.last?.id {
             proxy.scrollTo(lastRowID, anchor: .bottom)
         } else if viewModel.shouldShowThinkingIndicator {
             proxy.scrollTo("thinking-indicator", anchor: .bottom)
         }
         proxy.scrollTo("bottom", anchor: .bottom)
-        requestDirectBottomScroll()
+        if directScroll {
+            requestDirectBottomScroll()
+        }
     }
 
     private func requestDirectBottomScroll() {

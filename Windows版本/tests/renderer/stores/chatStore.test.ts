@@ -85,11 +85,82 @@ describe("chat store with fake backend", () => {
     expect(permissionMessage?.status).toBe("waiting");
     expect(permissionMessage?.requestID).toBeTruthy();
 
-    const didRespond = useChatStore.getState().respondToPermission(permissionMessage?.requestID ?? "", "allow");
+    const didRespond = await useChatStore.getState().respondToPermission(permissionMessage?.requestID ?? "", "allow");
 
     expect(didRespond).toBe(true);
     await waitForStore(() => useChatStore.getState().status === "completed");
     expect(useChatStore.getState().messages.find((message) => message.id === permissionMessage?.id)?.status).toBe("allowed");
+  });
+
+  it("marks the permission card failed when the backend rejects the response", async () => {
+    // 模拟不支持的 CLI / stdin 写失败：backend 对真实 requestID 也回 false。
+    const failingBackend = new FakeChatBackend({ chunkDelayMs: 1 });
+    failingBackend.respondToPermission = () => false;
+    useChatStore.getState().setBackend(failingBackend);
+    useChatStore.getState().send({
+      text: "permission please",
+      project,
+      cli: "claude",
+      sessionMode: "newSession"
+    });
+
+    await waitForStore(() => useChatStore.getState().status === "waitingPermission");
+    const permissionMessage = useChatStore.getState().messages.find((message) => message.kind === "permissionRequest");
+    expect(permissionMessage?.status).toBe("waiting");
+
+    const didRespond = await useChatStore.getState().respondToPermission(permissionMessage?.requestID ?? "", "allow");
+
+    expect(didRespond).toBe(false);
+    const failed = useChatStore.getState().messages.find((message) => message.id === permissionMessage?.id);
+    expect(failed?.status).toBe("failed");
+    expect(useChatStore.getState().messages.some((message) => message.kind === "error")).toBe(true);
+    expect(useChatStore.getState().status).toBe("failed");
+  });
+
+  it("coalesces rapid appendDelta events and flushes them in order", async () => {
+    const createdAt = new Date().toISOString();
+    const session: ChatSessionRecord = {
+      id: "session-delta",
+      cli: "claude",
+      projectName: project.name,
+      projectPath: project.path,
+      title: "Delta session",
+      modelID: "default",
+      permissionMode: "ask",
+      reasoningEffort: "medium",
+      externalSessionID: null,
+      createdAt,
+      updatedAt: createdAt,
+      runStatus: "running",
+      statusText: "streaming",
+      queuedRequests: [],
+      lastCompletedAt: null,
+      activeRunStartedAt: createdAt,
+      activeRunRequest: null
+    };
+    useChatStore.getState().hydrateSessions({
+      sessions: [session],
+      sessionMessages: { [session.id]: [] },
+      currentSessionId: session.id
+    });
+
+    const applyEvent = useChatStore.getState().applyEvent;
+    applyEvent({ type: "appendDelta", kind: "assistant", text: "alpha" });
+    applyEvent({ type: "appendDelta", kind: "assistant", text: " beta" });
+    applyEvent({ type: "appendDelta", kind: "assistant", text: " gamma" });
+
+    // 第一块即时落地，其余进 90ms 合帧 buffer——此刻文本还不是完整值。
+    const streaming = useChatStore.getState().messages.find((message) => message.kind === "assistant");
+    expect(streaming?.text).toBe("alpha");
+    expect(streaming?.isStreaming).toBe(true);
+
+    await waitForStore(() => useChatStore.getState().messages.find((message) => message.kind === "assistant")?.text === "alpha beta gamma");
+
+    // 终态事件前必须 flush：finish 之后文本完整、流式标记清除。
+    applyEvent({ type: "finished" });
+    const finished = useChatStore.getState().messages.find((message) => message.kind === "assistant");
+    expect(finished?.text).toBe("alpha beta gamma");
+    expect(finished?.isStreaming).toBe(false);
   });
 
   it("marks restored running sessions as interrupted failures", () => {

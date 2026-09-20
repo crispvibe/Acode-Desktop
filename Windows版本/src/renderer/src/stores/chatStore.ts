@@ -21,7 +21,7 @@ import type {
   SessionActivity,
   SessionMode
 } from "@shared/chat";
-import { chatCLIDefaultCommands, contextWindowForModel, isChatRunStatusRunning } from "@shared/chat";
+import { chatCLIDefaultCommands, chatCLISupportsInteractiveControls, contextWindowForModel, isChatRunStatusRunning } from "@shared/chat";
 import { cliLaunchEnvFor } from "@shared/settings";
 import type { AppSettings, CLIProfile, PermissionMode, ReasoningEffort } from "@shared/settings";
 import { useSettingsStore } from "./settingsStore";
@@ -85,8 +85,8 @@ export interface ChatPanelStoreActions {
   backendStreamDidEnd: () => void;
   startNextQueuedRequestIfNeeded: () => boolean;
   stop: () => void;
-  respondToPermission: (requestID: string, decision: PermissionDecision) => boolean;
-  respondToInteractiveRequest: (response: InteractiveResponse) => boolean;
+  respondToPermission: (requestID: string, decision: PermissionDecision) => Promise<boolean>;
+  respondToInteractiveRequest: (response: InteractiveResponse) => Promise<boolean>;
   newConversation: (project: ProjectSnapshot | null) => void;
   reset: () => void;
 }
@@ -146,24 +146,23 @@ export function createIpcChatBackend(chat: ChatBridge): ChatPanelBackend {
       if (!activeRunID) {
         return false;
       }
-      void chat.respondToPermission({ runID: activeRunID, requestID, decision });
-      return true;
+      // 回真实的 invoke 结果（不支持的 CLI / 写 stdin 失败在主进程返回 false），
+      // 让 store 能把卡片标成失败而不是乐观翻转成已允许。
+      return chat.respondToPermission({ runID: activeRunID, requestID, decision }).catch(() => false);
     },
 
     respondToInteractiveRequest(requestID: string, response: InteractiveResponse) {
       if (!activeRunID) {
         return false;
       }
-      void chat.respondToInteractiveRequest({ runID: activeRunID, response: { ...response, requestID } });
-      return true;
+      return chat.respondToInteractiveRequest({ runID: activeRunID, response: { ...response, requestID } }).catch(() => false);
     },
 
     sendCompact() {
       if (!activeRunID) {
         return false;
       }
-      void chat.sendCompact({ runID: activeRunID });
-      return true;
+      return chat.sendCompact({ runID: activeRunID }).catch(() => false);
     }
   };
 }
@@ -448,11 +447,103 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 流式 delta 合帧（对齐 Mac ChatPanelState.pendingDeltaBuffers + scheduleDeltaFlush）：
+  // 逐 token set() 会让整棵消息树重渲，并触发订阅方对全部会话消息做 JSON.stringify，
+  // 成本随会话长度平方增长。delta 文本先按 messageID 进 buffer，90ms 合帧一次；
+  // 任何非 delta 事件前先 flush 保证顺序；首个可见输出/首块工具输入即时落地。
+  // ---------------------------------------------------------------------------
+  const DELTA_FLUSH_MS = 90;
+  const pendingDeltaBuffers = new Map<string, string>();
+  const pendingDeltaStatuses = new Map<string, string>();
+  const pendingDeltaRequestIDs = new Map<string, string>();
+  let deltaFlushTimer: number | null = null;
+
+  function cancelDeltaFlushTimer(): void {
+    if (deltaFlushTimer !== null) {
+      window.clearTimeout(deltaFlushTimer);
+      deltaFlushTimer = null;
+    }
+  }
+
+  function scheduleDeltaFlush(): void {
+    if (deltaFlushTimer !== null) {
+      return;
+    }
+    deltaFlushTimer = window.setTimeout(() => {
+      deltaFlushTimer = null;
+      flushPendingDeltas();
+    }, DELTA_FLUSH_MS);
+  }
+
+  function flushPendingDeltas(): void {
+    cancelDeltaFlushTimer();
+    if (pendingDeltaBuffers.size === 0) {
+      return;
+    }
+    const buffers = new Map(pendingDeltaBuffers);
+    const statuses = new Map(pendingDeltaStatuses);
+    const requestIDs = new Map(pendingDeltaRequestIDs);
+    pendingDeltaBuffers.clear();
+    pendingDeltaStatuses.clear();
+    pendingDeltaRequestIDs.clear();
+
+    const state = get();
+    let didMutate = false;
+    const messages = state.messages.map((message) => {
+      const delta = buffers.get(message.id);
+      if (delta === undefined) {
+        return message;
+      }
+      didMutate = true;
+      return {
+        ...message,
+        text: shouldMirrorStreamingTextIntoMessage(message.kind) ? `${message.text}${delta}` : message.text,
+        status: statuses.get(message.id) ?? message.status,
+        requestID: message.requestID ?? requestIDs.get(message.id) ?? null
+      };
+    });
+    if (didMutate) {
+      bump({ messages });
+    }
+  }
+
+  /// 会话切换/重置/新 run 时丢弃未落地的 delta：buffer 按旧会话 messageID 索引，
+  /// 换上下文后没有任何目标消息，flush 只会白费一轮。
+  function discardPendingDeltas(): void {
+    cancelDeltaFlushTimer();
+    pendingDeltaBuffers.clear();
+    pendingDeltaStatuses.clear();
+    pendingDeltaRequestIDs.clear();
+  }
+
   function finishStreamingMessages(itemStatus: string): void {
+    flushPendingDeltas();
     set((state) => {
-      const messages = state.messages.map((message) =>
-        message.isStreaming ? { ...message, isStreaming: false, status: itemStatus } : message
-      );
+      const messages = state.messages.map((message) => {
+        if (message.isStreaming) {
+          return { ...message, isStreaming: false, status: itemStatus };
+        }
+        // 对齐 Mac cancelWaitingInteractiveRequestsOnInterrupt：permission/interactive
+        // 卡片不是 isStreaming，run 走到终态后还停在 waiting 的卡片永远等不到回执，
+        // 翻成 cancelled 让按钮塌掉，不留给用户一排永远点不动的假按钮。
+        if (message.kind === "permissionRequest" && message.status === "waiting") {
+          return { ...message, status: "cancelled" };
+        }
+        if (
+          message.kind === "interactiveRequest" &&
+          (message.status === "waiting" || message.interactiveRequest?.status === "waiting")
+        ) {
+          return {
+            ...message,
+            status: "cancelled",
+            interactiveRequest: message.interactiveRequest
+              ? { ...message.interactiveRequest, status: "cancelled" as const }
+              : message.interactiveRequest
+          };
+        }
+        return message;
+      });
       const runtime: ChatStoreRuntime = {
         ...state.runtime,
         activeAssistantMessageID: null,
@@ -538,6 +629,71 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
     });
   }
 
+  /// 权限响应落地（对齐 Mac respondToPermission）：写回成功才翻卡片；写回失败
+  /// （不支持的 CLI、stdin 已关、requestID 过期）不能让卡片停在 waiting 装活——
+  /// 标 failed、补错误消息、run 翻成 failed 让用户可以重发。
+  function applyPermissionOutcome(requestID: string, decision: PermissionDecision, didSend: boolean): void {
+    if (didSend) {
+      const status = decision === "deny" ? "denied" : "allowed";
+      // ack 到达时 run 可能已停止/终结，只在仍在跑时才把面板状态推回 streaming。
+      const stillRunning = isChatRunStatusRunning(get().status);
+      bump({
+        messages: get().messages.map((message) =>
+          message.kind === "permissionRequest" && message.requestID === requestID ? { ...message, status } : message
+        ),
+        ...(stillRunning ? { status: "streaming" as const, statusText: status } : {})
+      });
+      return;
+    }
+    bump({
+      messages: get().messages.map((message) =>
+        message.kind === "permissionRequest" && message.requestID === requestID ? { ...message, status: "failed" } : message
+      )
+    });
+    // run 已停止/终结时只塌卡片，不再补错误、不覆盖终态文案。
+    if (isChatRunStatusRunning(get().status)) {
+      appendError("权限响应写回失败。当前 CLI 不支持会话内权限交互，请改用自动编辑/全权限后重试。");
+      bump({ status: "failed", statusText: "权限写回失败" });
+    }
+  }
+
+  /// 选择题/输入响应落地（对齐 Mac respondToInteractiveRequest 失败路径）。
+  function applyInteractiveOutcome(requestID: string, didSend: boolean): void {
+    if (didSend) {
+      const status: InteractiveStatus = "answered";
+      const stillRunning = isChatRunStatusRunning(get().status);
+      bump({
+        messages: get().messages.map((message) =>
+          message.kind === "interactiveRequest" && message.requestID === requestID
+            ? {
+                ...message,
+                status,
+                interactiveRequest: message.interactiveRequest ? { ...message.interactiveRequest, status } : message.interactiveRequest
+              }
+            : message
+        ),
+        ...(stillRunning ? { status: "streaming" as const, statusText: "已回答" } : {})
+      });
+      return;
+    }
+    const failed: InteractiveStatus = "failed";
+    bump({
+      messages: get().messages.map((message) =>
+        message.kind === "interactiveRequest" && message.requestID === requestID
+          ? {
+              ...message,
+              status: failed,
+              interactiveRequest: message.interactiveRequest ? { ...message.interactiveRequest, status: failed } : message.interactiveRequest
+            }
+          : message
+      )
+    });
+    if (isChatRunStatusRunning(get().status)) {
+      appendError("交互响应写回失败。当前 CLI 不支持会话内选择题/输入回写。");
+      bump({ status: "failed", statusText: "交互写回失败" });
+    }
+  }
+
   async function runBackend(request: QueuedChatRequest, generation: number): Promise<void> {
     const state = get();
     const backend = state.runtime.backend;
@@ -606,6 +762,7 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
   }
 
   function startRun(request: QueuedChatRequest): boolean {
+    discardPendingDeltas();
     const current = get();
     const session = ensureSession(request, current.currentSession);
     const userMessageID = createID("message");
@@ -698,6 +855,7 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
     },
 
     hydrateSessions(snapshot) {
+      discardPendingDeltas();
       const state = get();
       const backend = state.runtime.backend;
       const staleRunningSessionIDs = new Set(
@@ -779,6 +937,7 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
         return;
       }
       const backend = state.runtime.backend;
+      discardPendingDeltas();
       set({
         messages: [],
         queuedRequests: [],
@@ -849,6 +1008,11 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
     },
 
     applyEvent(event) {
+      // 顺序保证：非 delta 事件必须看到此前所有 delta 已落地——finish/appendMessage 的
+      // 就地完结逻辑依赖 message.text 最新，且 waiting 卡片清理不能赶在 delta 前写。
+      if (event.type !== "appendDelta") {
+        flushPendingDeltas();
+      }
       const state = get();
       switch (event.type) {
         case "appendMessage": {
@@ -894,10 +1058,13 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
         case "appendDelta": {
           const revealedFirstOutput = get().appendDelta(event);
           const next = get();
-          bump({
-            status: revealedFirstOutput || isVisibleModelOutput(event.kind) ? "streaming" : next.status,
-            statusText: event.status ?? "streaming"
-          });
+          // delta 进 buffer 时 messages 没变；只在 status/statusText 真的变化时才再 bump
+          // 一次——否则每 token 两次 set() 会把合帧收益全部吃回去。
+          const nextStatus = revealedFirstOutput || isVisibleModelOutput(event.kind) ? "streaming" : next.status;
+          const nextStatusText = event.status ?? "streaming";
+          if (next.status !== nextStatus || next.statusText !== nextStatusText) {
+            bump({ status: nextStatus, statusText: nextStatusText });
+          }
           break;
         }
         case "finishStreamingMessage": {
@@ -990,9 +1157,19 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
             }
           } else if (usage >= COMPACT_THRESHOLD) {
             const triggerThreshold = cli === "codex" ? COMPACT_THRESHOLD : CLAUDE_COMPACT_FALLBACK_THRESHOLD;
-            if (usage >= triggerThreshold && !runtime.didAutoCompact && runtime.backend?.sendCompact()) {
+            if (usage >= triggerThreshold && !runtime.didAutoCompact && chatCLISupportsInteractiveControls(cli)) {
+              // sendCompact 的 IPC ack 是异步的：先乐观置位防止下个 tokenUsage 重复触发，
+              // 主进程回 false（stdin 已关等）时撤销，恢复成纯提示。
               runtime = { ...runtime, didAutoCompact: true };
               statusText = "上下文接近上限，自动压缩中…";
+              void Promise.resolve(state.runtime.backend?.sendCompact() ?? false).then((didSend) => {
+                if (!didSend) {
+                  const latest = get();
+                  if (latest.runtime.didAutoCompact) {
+                    bump({ runtime: { ...latest.runtime, didAutoCompact: false }, statusText: "上下文接近上限" });
+                  }
+                }
+              });
             } else if (!runtime.didAutoCompact) {
               // 只有 Claude Code 自带 CLI 侧自动压缩，其余 CLI（含新接入的 7 家）如实提示。
               statusText = cli === "claude" ? "上下文接近上限（CLI 将自动压缩）" : "上下文接近上限";
@@ -1057,14 +1234,39 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
       }
       const key = streamingKey(event.kind, event.requestID);
       const activeMessageID = state.runtime.activeStreamingMessageIDs[key];
-      const lastVisibleID = [...state.messages].reverse().find((message) => isVisibleModelOutput(message.kind) || message.kind === "user")?.id;
-      const mayAppendToExisting =
-        activeMessageID &&
-        state.messages.some((message) => message.id === activeMessageID) &&
-        (event.kind !== "assistant" && event.kind !== "reasoning" ? true : lastVisibleID === activeMessageID);
+      const target = activeMessageID ? state.messages.find((message) => message.id === activeMessageID) : undefined;
       const status = event.status ?? "streaming";
 
-      if (mayAppendToExisting) {
+      // assistant/reasoning 只允许续写"最后一条可见消息"（工具卡出现后不回头改旧气泡）；
+      // 其余 kind 直接按 key 续写。lastVisibleID 只在需要的分支里算，省一次全表反扫。
+      const mayAppendToExisting = Boolean(
+        target &&
+          (event.kind !== "assistant" && event.kind !== "reasoning"
+            ? true
+            : [...state.messages].reverse().find((message) => isVisibleModelOutput(message.kind) || message.kind === "user")?.id ===
+              activeMessageID)
+      );
+
+      if (mayAppendToExisting && target && activeMessageID) {
+        const revealsFirstOutput = state.isAwaitingFirstModelOutput && isVisibleModelOutput(event.kind);
+        // 首个可见输出与流式消息的第一块内容即时落地（对齐 Mac：工具卡出现的同一拍就有
+        // 正文，避免"先出标题、隔一拍才有内容"的两段式顿挫）；其余 delta 进 buffer 合帧。
+        const isFirstChunk = !pendingDeltaBuffers.has(activeMessageID) && target.text === "";
+        if (!isFirstChunk) {
+          pendingDeltaBuffers.set(activeMessageID, (pendingDeltaBuffers.get(activeMessageID) ?? "") + event.text);
+          pendingDeltaStatuses.set(activeMessageID, status);
+          const normalizedRequestID = event.requestID?.trim();
+          if (normalizedRequestID) {
+            pendingDeltaRequestIDs.set(activeMessageID, normalizedRequestID);
+          }
+          scheduleDeltaFlush();
+          // 即便文本走 buffer，首可见输出的揭示也要即时——否则"等待模型输出"会卡到
+          // 下一个非 delta 事件才消失。
+          if (revealsFirstOutput) {
+            bump({ isAwaitingFirstModelOutput: false });
+          }
+          return revealsFirstOutput;
+        }
         const messages = state.messages.map((message) => {
           if (message.id !== activeMessageID) {
             return message;
@@ -1076,7 +1278,6 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
             requestID: message.requestID ?? event.requestID ?? null
           };
         });
-        const revealsFirstOutput = state.isAwaitingFirstModelOutput && isVisibleModelOutput(event.kind);
         bump({ messages, isAwaitingFirstModelOutput: revealsFirstOutput ? false : state.isAwaitingFirstModelOutput });
         return revealsFirstOutput;
       }
@@ -1166,43 +1367,24 @@ export const useChatPanelStore = create<ChatPanelStore>((set, get) => {
       });
     },
 
-    respondToPermission(requestID, decision) {
-      const didSend = get().runtime.backend?.respondToPermission(requestID, decision) ?? false;
-      if (didSend) {
-        const status = decision === "deny" ? "denied" : "allowed";
-        bump({
-          messages: get().messages.map((message) =>
-            message.kind === "permissionRequest" && message.requestID === requestID ? { ...message, status } : message
-          ),
-          status: "streaming",
-          statusText: status
-        });
-      }
+    async respondToPermission(requestID, decision) {
+      // ack 是 boolean（本地/fake backend）或 Promise<boolean>（IPC invoke 的真实结果）。
+      // 只有写回真的成功才翻卡片；失败走 failed 路径，不再乐观翻转。
+      const ack = get().runtime.backend?.respondToPermission(requestID, decision) ?? false;
+      const didSend = await Promise.resolve(ack).catch(() => false);
+      applyPermissionOutcome(requestID, decision, didSend);
       return didSend;
     },
 
-    respondToInteractiveRequest(response) {
-      const didSend = get().runtime.backend?.respondToInteractiveRequest(response.requestID, response) ?? false;
-      if (didSend) {
-        const status: InteractiveStatus = "answered";
-        bump({
-          messages: get().messages.map((message) =>
-            message.kind === "interactiveRequest" && message.requestID === response.requestID
-              ? {
-                  ...message,
-                  status,
-                  interactiveRequest: message.interactiveRequest ? { ...message.interactiveRequest, status } : message.interactiveRequest
-                }
-              : message
-          ),
-          status: "streaming",
-          statusText: "已回答"
-        });
-      }
+    async respondToInteractiveRequest(response) {
+      const ack = get().runtime.backend?.respondToInteractiveRequest(response.requestID, response) ?? false;
+      const didSend = await Promise.resolve(ack).catch(() => false);
+      applyInteractiveOutcome(response.requestID, didSend);
       return didSend;
     },
 
     reset() {
+      discardPendingDeltas();
       const state = get();
       const backend = state.runtime.backend;
       set({
@@ -1360,21 +1542,25 @@ function notifyChatSessionTerminalTransitions(sessions: ChatSessionRecord[]): vo
 }
 
 useChatPanelStore.subscribe((state) => {
-  const snapshot: ChatSessionSnapshot = {
-    sessions: state.sessions,
-    sessionMessages: snapshotCurrentSessionMessages(state),
-    currentSessionId: state.currentSession?.id ?? null
-  };
   notifyChatSessionTerminalTransitions(state.sessions);
-  const payload = JSON.stringify(snapshot);
-  if (payload === lastPersistedChatSessionPayload) {
-    return;
-  }
+  // 每次 bump 都会因 withDerivedState 的 updatedAt 产生新快照——若在此就
+  // JSON.stringify 全量 sessions+messages，流式期间等于每帧做一次 O(transcript)
+  // 序列化。改为只标 dirty，400ms 后在定时器里取最新 state 序列化一次。
   if (chatSessionPersistTimer !== null) {
-    window.clearTimeout(chatSessionPersistTimer);
+    return;
   }
   chatSessionPersistTimer = window.setTimeout(() => {
     chatSessionPersistTimer = null;
+    const latest = useChatPanelStore.getState();
+    const snapshot: ChatSessionSnapshot = {
+      sessions: latest.sessions,
+      sessionMessages: snapshotCurrentSessionMessages(latest),
+      currentSessionId: latest.currentSession?.id ?? null
+    };
+    const payload = JSON.stringify(snapshot);
+    if (payload === lastPersistedChatSessionPayload) {
+      return;
+    }
     lastPersistedChatSessionPayload = payload;
     const savePromise = window.codevoke?.chat.saveSessions(snapshot);
     if (!savePromise) {

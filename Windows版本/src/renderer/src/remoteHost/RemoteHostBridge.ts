@@ -389,14 +389,14 @@ class RemoteHostBridge {
       case "respondPermission": {
         const requestID = args.permissionRequestId ?? args.requestId ?? "";
         const decision = asPermissionDecision(args.decision);
-        if (requestID) chat.respondToPermission(requestID, decision);
+        if (requestID) void chat.respondToPermission(requestID, decision);
         return okOutcome(command);
       }
       case "respondInteractive": {
         const response = args.interactiveResponse;
         const requestID = args.interactiveRequestId ?? (response?.requestId as string | undefined) ?? "";
         if (requestID && response) {
-          chat.respondToInteractiveRequest({
+          void chat.respondToInteractiveRequest({
             requestID,
             selectedOptionIDs: Array.isArray((response as { selectedOptionIDs?: unknown }).selectedOptionIDs)
               ? ((response as { selectedOptionIDs: string[] }).selectedOptionIDs)

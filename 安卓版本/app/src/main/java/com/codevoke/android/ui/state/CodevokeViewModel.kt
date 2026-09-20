@@ -100,6 +100,15 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
     private var pendingProjectFocusJob: Job? = null
     private var pendingSessionFocusJob: Job? = null
     private var pendingAttachmentUploadCount = 0
+    /// 合并窗口：流式期间 host 每 ~30ms 推一个 patch，绝大多数只改
+    /// streamingTexts/statusText/tokens 这类外观字段。这类 patch 立即并入
+    /// `snapshot`（保住 baseRevision 链），但 `chat` 的 Compose 状态发布
+    /// 合并到 ~80ms 尾部刷新，避免每个 patch 都让整棵 ChatScreen 重组。
+    private var pendingCosmeticSnapshot: RemotePanelSnapshot? = null
+    private var cosmeticPublishJob: Job? = null
+    /// 已经自动拉过文件树的项目 id；防止 adoptSnapshot 每个 patch 都打一次
+    /// projectFiles HTTP（流式期间约 30 次/秒，是明显的卡顿/网络风暴根因）。
+    private var autoLoadedFilesProjectId: String? = null
     private val maxAttachmentBytes = 10 * 1024 * 1024
     private val maxTotalAttachmentBytes = 20 * 1024 * 1024
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -156,6 +165,8 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             devices = devices.copy(connecting = true, message = null)
             snapshot = null
+            cancelCosmeticPublish()
+            autoLoadedFilesProjectId = null
             remoteChatClient.disconnect()
             chat = ChatUiState(connectionStatus = "连接中")
             val failure = tryEstablishDirectConnection(RemoteChatConfig(macHost = cleanHost, port = port))
@@ -175,6 +186,8 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
     fun disconnectRemote() {
         remoteChatClient.disconnect()
         snapshot = null
+        cancelCosmeticPublish()
+        autoLoadedFilesProjectId = null
         pendingCommands.clear()
         devices = devices.copy(connectedHost = null)
         chat = ChatUiState()
@@ -208,6 +221,8 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun selectProject(project: RemoteProject) {
+        cancelCosmeticPublish()
+        autoLoadedFilesProjectId = project.id
         chat = chat.copy(
             selectedProjectId = project.id,
             selectedSessionId = null,
@@ -264,6 +279,7 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun selectSession(session: RemoteSession) {
+        cancelCosmeticPublish()
         chat = chat.copy(
             selectedSessionId = session.id,
             selectedProjectId = session.projectId ?: chat.selectedProjectId,
@@ -276,6 +292,7 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
 
     fun startNewChat() {
         val projectId = chat.selectedProject?.id ?: return
+        cancelCosmeticPublish()
         chat = chat.copy(selectedSessionId = null, inputText = "", attachments = emptyList(), messages = emptyList())
         sendRemoteCommand("focusProject", args = JSONObject().put("projectId", projectId))
         sendRemoteCommand("newDraftSession", args = JSONObject().put("projectId", projectId))
@@ -502,7 +519,7 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             }
         }
         remoteChatClient.onError = { error -> viewModelScope.launch { chat = chat.copy(lastError = error) } }
-        remoteChatClient.onSnapshot = { next -> viewModelScope.launch { adoptSnapshot(next) } }
+        remoteChatClient.onSnapshot = { next -> viewModelScope.launch { cancelCosmeticPublish(); adoptSnapshot(next, clearError = true) } }
         remoteChatClient.onPatch = { patch -> viewModelScope.launch { applyRemotePatch(patch) } }
         remoteChatClient.onAck = { commandId, status, message, sessionId ->
             viewModelScope.launch {
@@ -513,7 +530,7 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun adoptSnapshot(next: RemotePanelSnapshot) {
+    private fun adoptSnapshot(next: RemotePanelSnapshot, clearError: Boolean = false) {
         snapshot = next
         remoteChatClient.updateResumeContext(next.currentSessionId ?: chat.selectedSessionId, next.revision)
         val projectId = chat.selectedProjectId ?: next.sessions.firstOrNull { it.id == next.currentSessionId }?.projectId ?: next.projects.firstOrNull()?.id
@@ -537,9 +554,20 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             tokensUsed = next.tokensUsed,
             tokensTotal = next.tokensTotal,
             capabilities = next.capabilities,
-            lastError = null,
+            // patch 驱动（含合并窗口 flush）不清除 lastError —— 否则
+            // command_ack 的错误/拒绝提示会被下一个流式 patch 立刻抹掉，
+            // 用户根本看不到。
+            lastError = if (clearError) null else chat.lastError,
         )
-        if (chat.config.supportsDirectHttp) viewModelScope.launch { reloadFiles() }
+        if (chat.config.supportsDirectHttp) {
+            // 只在首次看到某项目时自动拉一次文件树；用户主动 selectProject /
+            // refresh / openFile 已有显式 reloadFiles。
+            val autoLoadProjectId = chat.selectedProject?.id
+            if (autoLoadProjectId != null && autoLoadedFilesProjectId != autoLoadProjectId) {
+                autoLoadedFilesProjectId = autoLoadProjectId
+                viewModelScope.launch { reloadFiles() }
+            }
+        }
     }
 
     private fun applyRemotePatch(patch: com.codevoke.android.data.RemotePanelPatch) {
@@ -553,7 +581,44 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
             requestSnapshot(patch.sessionId ?: current.currentSessionId ?: chat.selectedSessionId)
             return
         }
-        adoptSnapshot(merged)
+        // mirror 状态必须先推进 —— 下一个 patch 的 baseRevision 校验依赖它。
+        snapshot = merged
+        if (patch.isCosmeticOnly()) {
+            pendingCosmeticSnapshot = merged
+            scheduleCosmeticPublish()
+        } else {
+            cancelCosmeticPublish()
+            adoptSnapshot(merged)
+        }
+    }
+
+    /// 仅外观字段变化的 patch 允许合并发布；结构性字段（消息列表、会话、
+    /// composer、运行状态等）一旦出现必须立即发布。
+    private fun com.codevoke.android.data.RemotePanelPatch.isCosmeticOnly(): Boolean =
+        projects == null && models == null && sessions == null &&
+            currentSessionIdField == null && currentSessionId == null &&
+            messages == null && queuedRequests == null && status == null &&
+            isLoadingHistory == null && composer == null &&
+            activeRunStartedAtField == null && activeRunStartedAt == null &&
+            isMirroringRemoteSession == null && capabilities == null
+
+    private fun scheduleCosmeticPublish() {
+        if (cosmeticPublishJob != null) return
+        cosmeticPublishJob = viewModelScope.launch {
+            delay(COSMETIC_PUBLISH_DELAY_MS)
+            cosmeticPublishJob = null
+            val pending = pendingCosmeticSnapshot
+            pendingCosmeticSnapshot = null
+            if (pending != null) adoptSnapshot(pending)
+        }
+    }
+
+    /// 结构性变化或上下文切换前丢弃未发布的合并快照 —— 否则迟到的 flush
+    /// 会把切换前的旧状态（比如旧的 selectedSessionId）重新贴回 UI。
+    private fun cancelCosmeticPublish() {
+        cosmeticPublishJob?.cancel()
+        cosmeticPublishJob = null
+        pendingCosmeticSnapshot = null
     }
 
     private suspend fun reloadFiles(path: String = chat.currentFilePath) {
@@ -746,5 +811,6 @@ class CodevokeViewModel(application: Application) : AndroidViewModel(application
         const val KEY_HOST = "host"
         const val KEY_PORT = "port"
         const val DEFAULT_PORT = 18765
+        const val COSMETIC_PUBLISH_DELAY_MS = 80L
     }
 }

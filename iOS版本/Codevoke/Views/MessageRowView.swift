@@ -22,6 +22,20 @@ struct MessageRowView: View {
             },
             onEditUserMessage: message.kind == .user ? { _ in onEdit?() } : nil,
             advancedToolCard: { message in
+                // 权限/交互请求必须先走 AdvancedToolCard（PermissionRequestCard /
+                // InteractiveRequestCard）。这两类消息的 title 通常就是工具名
+                // （"Edit"/"Write"/"MultiEdit"），若先命中下面的文件变更/通用
+                // 快捷分支，会渲染成只读的一行摘要，按钮被吞掉 —— 表现为
+                // "工具调用 UI 无法使用"，会话卡在 waitingPermission。
+                if message.kind == .permissionRequest || message.kind == .interactiveRequest {
+                    return AnyView(AdvancedToolCard(
+                        message: message,
+                        onPermissionDecision: { requestID, decision in
+                            onPermissionDecision?(requestID, Self.wireDecision(for: decision))
+                        },
+                        onInteractiveSubmit: onInteractiveSubmit
+                    ))
+                }
                 if Self.isFileChangeToolMessage(message) {
                     return AnyView(CompactFileChangeToolRow(message: message))
                 }

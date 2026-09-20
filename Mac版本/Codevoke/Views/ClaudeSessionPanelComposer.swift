@@ -639,10 +639,27 @@ extension ChatPanelView {
 
     func scheduleStreamingScrollIfFollowing(_ proxy: ScrollViewProxy) {
         guard transcriptUserIntent == .followBottom else { return }
-        pendingStreamingScrollTask?.cancel()
+        // Throttle follow-scrolls to ~11Hz, but LEAD when the last scroll is older than the
+        // interval. A pure trailing-edge delay meant every new delta cancelled the pending
+        // scroll, so during sustained streaming the view stayed frozen until a pause — the
+        // "scroll not smooth / lags behind" symptom.
+        let interval: TimeInterval = 0.09
+        let elapsed = Date().timeIntervalSince(lastStreamingScrollAt)
+        if elapsed >= interval {
+            pendingStreamingScrollTask?.cancel()
+            pendingStreamingScrollTask = nil
+            lastStreamingScrollAt = Date()
+            scrollTranscriptToBottomOnce(proxy)
+            return
+        }
+        // Trailing edge: at most one pending scroll, fired at the 90ms mark. Do NOT cancel and
+        // re-arm on each delta — under a fast burst that would starve the scroll indefinitely.
+        guard pendingStreamingScrollTask == nil else { return }
         pendingStreamingScrollTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 90_000_000)
+            defer { pendingStreamingScrollTask = nil }
+            try? await Task.sleep(nanoseconds: UInt64((interval - elapsed) * 1_000_000_000))
             guard !Task.isCancelled else { return }
+            lastStreamingScrollAt = Date()
             scrollTranscriptToBottomOnce(proxy)
         }
     }

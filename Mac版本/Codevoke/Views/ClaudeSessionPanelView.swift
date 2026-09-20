@@ -62,6 +62,7 @@ struct ChatPanelView: View {
     @State var transcriptBuildTask: Task<Void, Never>?
     @State var pendingTranscriptScrollTask: Task<Void, Never>?
     @State var pendingStreamingScrollTask: Task<Void, Never>?
+    @State var lastStreamingScrollAt = Date.distantPast
     @State var nsScrollToBottomToken: Int = 0
     let transcriptInitialMessageLimit = ChatPanelState.historyInitialMessageLimit
     let transcriptMessagePageSize = ChatPanelState.historyInitialMessageLimit
@@ -762,14 +763,13 @@ struct ChatPanelView: View {
             isLoading: chatState.isAwaitingFirstModelOutput,
             messages: visibleTranscriptMessages.compactMap { message in
                 guard shouldShowInTranscript(message) else { return nil }
-                let streamingTextLength = message.isStreaming
-                    ? chatState.streamingTextStore.text(for: message.id)?.utf8.count ?? 0
-                    : 0
+                let hasStreamingText = message.isStreaming
+                    && !(chatState.streamingTextStore.text(for: message.id)?.isEmpty ?? true)
                 return ChatTranscriptStructureKey.MessageFingerprint(
                     id: message.id,
                     kind: message.kind,
                     isStreaming: message.isStreaming,
-                    streamingTextLength: streamingTextLength,
+                    hasStreamingText: hasStreamingText,
                     title: message.title,
                     subtitle: message.subtitle,
                     status: message.status,

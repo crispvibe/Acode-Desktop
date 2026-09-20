@@ -452,12 +452,24 @@ export type ChatBackendEvent =
   | { type: "finished" }
   | { type: "failed"; message: string };
 
+/// 响应回执：本地 backend（fake/测试）同步返回 boolean，IPC 桥返回 invoke 的真实
+/// Promise<boolean>。两种形态都必须表达"CLI 侧是否真的收到了响应"，否则权限卡/选择题
+/// 会在写回失败时假翻转成已回答，或在不支持的 CLI 上留着永远等不到回执的假按钮。
+export type ChatBackendAck = boolean | Promise<boolean>;
+
+/// claude（stdin control_response）与 codex（app-server JSON-RPC response）有会话内控制
+/// 回写通道，权限卡、AskUserQuestion、/compact 才能真正送达；其余 7 家通用 CLI 没有该
+/// 通道，respond*/sendCompact 在进程侧恒为 false——UI 据此不渲染可点的假按钮。
+export function chatCLISupportsInteractiveControls(cli: ChatCLI): boolean {
+  return cli === "claude" || cli === "codex";
+}
+
 export interface ChatPanelBackend {
   start(prompt: string, options: ChatRunOptions, session: ChatSessionRecord | null, attachments?: ChatMessageAttachment[]): AsyncIterable<ChatBackendEvent>;
   interrupt(): void;
-  respondToPermission(requestID: string, decision: PermissionDecision): boolean;
-  respondToInteractiveRequest(requestID: string, response: InteractiveResponse): boolean;
-  sendCompact(): boolean;
+  respondToPermission(requestID: string, decision: PermissionDecision): ChatBackendAck;
+  respondToInteractiveRequest(requestID: string, response: InteractiveResponse): ChatBackendAck;
+  sendCompact(): ChatBackendAck;
 }
 
 export interface ChatBackendEventEnvelope {

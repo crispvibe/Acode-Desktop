@@ -9,6 +9,7 @@
 - **许可变更**：MIT → PolyForm Noncommercial 1.0.0，仅限个人非商业使用，禁止商用；四端"关于"页加入版权与许可说明。
 - **清理**：删除旧账号体系相关文档与设计图（登录/注册设计图、三份旧体系审计报告、Windows 交接文档、progress.txt）；删除官网设计稿与账号时代设备列表设计图；清理 iOS 本地化表中 130+ 条登录/注册/账号/设备码/信令/TURN 死文案，移除 `RemoteUserFacingText` 中已死的连接审批/权益映射方法与 `codevokeAuthGlass*` 死代码、Android `AuthGlass*` 死 token；脚本残留旧名统一为 acode。
 - **仓库**：更名为 `crispvibe/Acode-Desktop`，远端仅保留 `main` 单一分支。
+- **聊天体验修复**：流式卡顿（macOS 结构指纹误含文本长度→每 flush 全量重建；Windows 逐 token set+全量序列化→90ms 合帧；移动端 WS 解码占主线程+每 patch 重组→外观字段合并发布）；滚动抖动（程序化回波吞用户滚动/动画互打→近底阈值即时吸附）；工具卡片假按钮（stale waiting 卡无人清理、IPC ack 被 void 恒真→真实 ack 翻转+不支持交互的 CLI 禁用按钮）。
 - **多 CLI 支持**：host 端从 2 家扩到 9 家——新增 Cursor Agent、Gemini、Qwen Code、Copilot、Kimi、Antigravity、Kiro 适配（stream-json/JSONL 事件统一映射到面板卡片；不支持交互式权限回执的 CLI 走启动 flag 降级；resume 能力按各 CLI 实际支持接入）；iOS/Android CLI 选择器扩为 9 项目录，未收录值兜底显示。
 - **文档**：README 明确当前支持 Claude Code / Codex 两个 CLI，更多 CLI（cursor-agent、Gemini CLI 等）规划中，欢迎贡献适配。
 

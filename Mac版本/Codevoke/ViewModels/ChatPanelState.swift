@@ -951,7 +951,14 @@ final class ChatPanelController: ObservableObject {
         scheduleStopFallback()
     }
 
-    private func cancelWaitingInteractiveRequestsOnInterrupt() {
+    /// Cancels every permission / interactive request row still marked `waiting`. Only valid
+    /// when no live backend could ever answer them (interrupt, backend stream end, or a stale
+    /// persisted session) — otherwise the transcript keeps showing Allow/Deny / option buttons
+    /// whose taps either hit `activeBackend == nil` and degrade to `.failed`, or (worse) write a
+    /// bogus control_response into a NEW run's backend.
+    @discardableResult
+    private func cancelWaitingInteractiveRequestsOnInterrupt() -> Bool {
+        guard !isMirroringRemoteSession else { return false }
         var didMutate = false
         for index in messages.indices {
             let kind = messages[index].kind
@@ -968,6 +975,7 @@ final class ChatPanelController: ObservableObject {
         if didMutate {
             bumpStructureRevision()
         }
+        return didMutate
     }
 
     func respondToPermission(requestID: String, allowed: Bool) {
@@ -1421,6 +1429,11 @@ final class ChatPanelController: ObservableObject {
         activeBackend = nil
         stopFallbackTask?.cancel()
         stopFallbackTask = nil
+        // A permission / interactive request can only be answered while its backend is alive.
+        // If the stream ends with one still `waiting` (CLI crash/EOF mid-prompt, `.failed`
+        // while waiting — note `status.isRunning` is already false in that path), its buttons
+        // become dead taps. Collapse them now so the card shows as cancelled instead.
+        cancelWaitingInteractiveRequestsOnInterrupt()
         let shouldStartQueuedRequest = shouldStartQueuedRequestAfterBackendEnds
         shouldStartQueuedRequestAfterBackendEnds = false
         if status.isRunning {
@@ -1742,7 +1755,14 @@ final class ChatPanelController: ObservableObject {
         // "运行中 / 打字中"且 Allow/Deny、停止等按钮点击后必然失败。镜像会话(iOS 端
         // 正在跑、Mac 端只镜像显示)的运行态是合法的,不在此列。
         guard !isMirroringRemoteSession, currentTask == nil, activeBackend == nil else { return }
-        guard status.isRunning else { return }
+        // A persisted snapshot can also leave `waiting` permission/交互 rows behind even when
+        // runStatus was already saved as non-running — with no live backend those rows render
+        // dead Allow/Deny / option buttons, so always cancel them here.
+        let cancelledStaleRequests = cancelWaitingInteractiveRequestsOnInterrupt()
+        guard status.isRunning else {
+            if cancelledStaleRequests { actuallyPersist() }
+            return
+        }
         for index in messages.indices where messages[index].isStreaming {
             messages[index].isStreaming = false
             if messages[index].status == "streaming" || messages[index].status.isEmpty {

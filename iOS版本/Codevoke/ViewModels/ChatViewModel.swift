@@ -115,6 +115,16 @@ final class ChatViewModel: ObservableObject {
 
     /// snapshot/patch 镜像。
     private let mirror = PanelStateMirror()
+
+    /// 合并窗口：流式期间 host 每 ~30ms 推一个 patch，绝大多数只改
+    /// streamingTexts/statusText/tokens 这类"外观"字段。这类 patch 仍然立即
+    /// 并入 mirror（保住 baseRevision 链、数据不丢），但 `@Published` 的发布
+    /// 合并到一个尾部 flush —— 否则每个 patch 都会触发整列重建 +
+    /// 正在流式的那行整段 markdown/block 重解析（缓存 key 是全量文本，追加式
+    /// 增长意味着每个 patch 都是 cache miss 的 O(n) 重解析）。
+    private var pendingCosmeticSnapshot: PanelStateSnapshot?
+    private var cosmeticPublishTask: Task<Void, Never>?
+    private static let cosmeticPublishDelayNanoseconds: UInt64 = 80_000_000
     private var recoveredSessionsByProjectId: [UUID: [PanelSessionDTO]] = [:]
     private var recoveredMessagesBySessionId: [UUID: [ChatMessage]] = [:]
     private var recoveredMessagePageStateBySessionId: [UUID: (nextBeforeIndex: Int?, hasMore: Bool)] = [:]
@@ -311,6 +321,7 @@ final class ChatViewModel: ObservableObject {
             appendDebug("startNewChat: no project selected")
             return
         }
+        cancelCosmeticPublish()
         clearPendingFocusedSessionId()
         pendingProjectFocusId = selectedProjectId
         focusedSessionId = nil
@@ -324,6 +335,7 @@ final class ChatViewModel: ObservableObject {
 
     /// 选项目 —— 先切远端项目，再通过恢复通道补齐会话、消息和文件列表。
     func selectProject(_ project: PanelProjectDTO) async {
+        cancelCosmeticPublish()
         clearPendingFocusedSessionId()
         pendingProjectFocusId = project.id
         focusedSessionId = nil
@@ -378,6 +390,7 @@ final class ChatViewModel: ObservableObject {
 
     /// 选会话 —— focusSession。
     func selectSession(_ session: PanelSessionDTO) async {
+        cancelCosmeticPublish()
         clearPendingProjectFocusId()
         // Audit C-04: if the session belongs to a different project than the
         // one currently highlighted in the sidebar, sync `_localSelectedProjectId`
@@ -1423,6 +1436,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func disconnectCurrentTransport() {
+        cancelCosmeticPublish()
         remoteTransport?.disconnect()
         remoteTransport = nil
         failPendingRecoveryRequests(message: L10n.string("远程连接已断开，请重新连接。"))
@@ -1471,6 +1485,7 @@ final class ChatViewModel: ObservableObject {
                 appendDebug("ignored unfocused snapshot sid=\(snapshot.sessionId?.uuidString ?? "draft") current=\(snapshot.currentSessionId?.uuidString ?? "nil")")
                 return
             }
+            cancelCosmeticPublish()
             mirror.apply(snapshot: snapshot)
             adoptSnapshotIfFocused(snapshot)
         case .patch:
@@ -1481,13 +1496,41 @@ final class ChatViewModel: ObservableObject {
                 return
             }
             if let merged = mirror.apply(patch: patch) {
-                adoptSnapshotIfFocused(merged)
+                if patch.touchesOnlyCosmeticFields {
+                    scheduleCosmeticPublish(merged)
+                } else {
+                    cancelCosmeticPublish()
+                    adoptSnapshotIfFocused(merged)
+                }
             } else {
                 // base 不匹配 —— 主动请求 fresh snapshot。
                 appendDebug("patch base mismatch sid=\(patch.sessionId?.uuidString ?? "draft") rev=\(patch.revision); requesting snapshot")
                 sendCommand(Command(op: .requestSnapshot, sessionId: patch.sessionId))
             }
         }
+    }
+
+    /// 外观 patch 的尾部发布：mirror 已合并完成，这里只决定何时让
+    /// `currentSnapshot`/滚动信号真正 fire 到 UI。
+    private func scheduleCosmeticPublish(_ snapshot: PanelStateSnapshot) {
+        pendingCosmeticSnapshot = snapshot
+        guard cosmeticPublishTask == nil else { return }
+        cosmeticPublishTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.cosmeticPublishDelayNanoseconds)
+            guard let self, !Task.isCancelled else { return }
+            self.cosmeticPublishTask = nil
+            guard let pending = self.pendingCosmeticSnapshot else { return }
+            self.pendingCosmeticSnapshot = nil
+            self.adoptSnapshotIfFocused(pending)
+        }
+    }
+
+    /// 结构性变化（snapshot/非外观 patch）或上下文切换前，丢弃尚未发布
+    /// 的合并快照 —— 否则一个迟到的 flush 会把切会话前的旧状态贴回来。
+    private func cancelCosmeticPublish() {
+        cosmeticPublishTask?.cancel()
+        cosmeticPublishTask = nil
+        pendingCosmeticSnapshot = nil
     }
 
     private func shouldAccept(_ snapshot: PanelStateSnapshot) -> Bool {
@@ -1530,6 +1573,7 @@ final class ChatViewModel: ObservableObject {
 
     private func adoptCatalogSnapshotIfNeeded(_ snapshot: PanelStateSnapshot) {
         guard currentSnapshot == nil, shouldAcceptBootstrapSnapshot(snapshot) else { return }
+        cancelCosmeticPublish()
         currentSnapshot = snapshot
         if focusedSessionId == nil {
             focusedSessionId = snapshot.currentSessionId ?? snapshot.sessionId
@@ -1713,5 +1757,20 @@ final class ChatViewModel: ObservableObject {
         if let urlError = error as? URLError, urlError.code == .cancelled { return true }
         let nsError = error as NSError
         return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+    }
+}
+
+private extension PanelStatePatch {
+    /// 仅外观字段变化的 patch 允许合并发布；任何结构性字段（消息列表、
+    /// 会话/项目目录、composer、运行状态机、权限/交互卡片等）一旦出现
+    /// 必须立即发布，保证交互正确性和状态翻转的及时性。
+    /// 允许延迟的字段：streamingTexts / statusText / isAwaitingFirstModelOutput
+    /// / tokensUsed / tokensTotal —— 全部只影响渲染外观。
+    var touchesOnlyCosmeticFields: Bool {
+        projects == nil && models == nil && sessions == nil
+            && currentSessionId == nil && messages == nil && queuedRequests == nil
+            && status == nil && isLoadingHistory == nil
+            && activeRunStartedAt == nil && isMirroringRemoteSession == nil
+            && composer == nil && capabilities == nil
     }
 }

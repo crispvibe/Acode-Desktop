@@ -12,7 +12,7 @@ import {
   Terminal,
   X
 } from "lucide-react";
-import { FormEvent, memo, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type {
   ChatMessage,
@@ -22,7 +22,7 @@ import type {
   ProjectSnapshot,
   QueuedChatRequest
 } from "@shared/chat";
-import { chatCLIDisplayNames, chatCLIValues, isChatRunStatusRunning } from "@shared/chat";
+import { chatCLIDisplayNames, chatCLIValues, chatCLISupportsInteractiveControls, isChatRunStatusRunning } from "@shared/chat";
 import type { CLIKind, PermissionMode, ReasoningEffort } from "@shared/settings";
 import { createIpcChatBackend, useChatStore } from "@renderer/src/stores/chatStore";
 import { useEditorStore } from "@renderer/src/stores/editorStore";
@@ -883,17 +883,34 @@ export function ChatRuntimePanel() {
   const cancelQueuedRequest = useChatStore((state) => state.cancelQueuedRequest);
   const activateProject = useChatStore((state) => state.activateProject);
   const respondToInteractiveRequest = useChatStore((state) => state.respondToInteractiveRequest);
+  const sessionCLI = useChatStore((state) => state.currentSession?.cli);
   const openFile = useEditorStore((state) => state.openFile);
   const isRunning = isChatRunStatusRunning(status);
+  const activeCLI = settings?.defaultCLI ?? "claude";
+  // 通用 7 家 CLI 没有会话内交互回写通道：选择题只读展示，不再劫持输入框或渲染假按钮。
+  const interactiveCapable = chatCLISupportsInteractiveControls(sessionCLI ?? activeCLI);
   const waitingInteractive = useMemo(
     () =>
-      messages.find(
-        (message) => message.kind === "interactiveRequest" && message.interactiveRequest?.status === "waiting"
-      )?.interactiveRequest ?? null,
-    [messages]
+      interactiveCapable
+        ? messages.find(
+            (message) => message.kind === "interactiveRequest" && message.interactiveRequest?.status === "waiting"
+          )?.interactiveRequest ?? null
+        : null,
+    [interactiveCapable, messages]
   );
   const renderItems = useMemo(() => buildRenderItems(messages), [messages]);
-  const activeCLI = settings?.defaultCLI ?? "claude";
+  // 稳定引用：内联箭头会让 memo(ChatMessageRow) 的 props 每次渲染都变，整列重渲。
+  const handleToggleReasoning = useCallback((id: string) => {
+    setExpandedReasoningIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
   const activeProfile = useMemo(() => {
     const profiles = settings?.profiles.filter((profile) => profile.kind === activeCLI && profile.enabled) ?? [];
     return profiles.find((profile) => profile.isDefault) ?? profiles[0] ?? null;
@@ -981,14 +998,17 @@ export function ChatRuntimePanel() {
   }, [messageScrollSignature, queuedRequests.length, statusText]);
 
   function updateScrollPosition() {
-    if (programmaticScrollRef.current) {
-      return;
-    }
     const viewport = viewportRef.current;
     if (!viewport) {
       return;
     }
     const nearBottom = isNearScrollBottom(viewport);
+    // programmaticScrollRef 只用来吞掉 scrollTo 自己产生的回波（位置已在底部）；
+    // 若用户在同一帧内主动上翻（位置不在底部），必须照常处理，否则 stick 标记会
+    // 停在 true 把用户拖回底部。
+    if (programmaticScrollRef.current && nearBottom) {
+      return;
+    }
     shouldStickToBottomRef.current = nearBottom;
     setIsNearBottom(nearBottom);
   }
@@ -1092,16 +1112,19 @@ export function ChatRuntimePanel() {
       waitingInteractive &&
       (waitingInteractive.allowCustomInput || waitingInteractive.mode === "text")
     ) {
-      const didRespond = respondToInteractiveRequest({
+      // ack 现在是异步的（IPC invoke 真实结果）：写回成功才清空输入框，
+      // 失败时保留原文让用户重试，卡片由 store 走 failed 路径。
+      void respondToInteractiveRequest({
         requestID: waitingInteractive.id,
         selectedOptionIDs: [],
         customText: text
+      }).then((didRespond) => {
+        if (didRespond) {
+          setInput("");
+          setActivePicker(null);
+        }
       });
-      if (didRespond) {
-        setInput("");
-        setActivePicker(null);
-        return;
-      }
+      return;
     }
     if ((!text && attachments.length === 0) || !project?.path) {
       return;
@@ -1145,17 +1168,7 @@ export function ChatRuntimePanel() {
                 message={item.message}
                 onOpenFile={openFile}
                 reasoningExpanded={expandedReasoningIds.has(item.message.id)}
-                onToggleReasoning={() => {
-                  setExpandedReasoningIds((current) => {
-                    const next = new Set(current);
-                    if (next.has(item.message.id)) {
-                      next.delete(item.message.id);
-                    } else {
-                      next.add(item.message.id);
-                    }
-                    return next;
-                  });
-                }}
+                onToggleReasoning={handleToggleReasoning}
               />
             )
           )
@@ -1405,7 +1418,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
 }: {
   message: ChatMessage;
   onOpenFile: (path: string) => void | Promise<void>;
-  onToggleReasoning: () => void;
+  onToggleReasoning: (id: string) => void;
   reasoningExpanded: boolean;
 }) {
   if (message.kind === "permissionRequest") {
@@ -1436,7 +1449,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
           <Bot size={16} />
         </div>
         <div className="assistant-bubble">
-          <button type="button" className="thinking-row" onClick={onToggleReasoning}>
+          <button type="button" className="thinking-row" onClick={() => onToggleReasoning(message.id)}>
             {reasoningExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             <b>thinking</b>
             {message.isStreaming ? <span>streaming</span> : null}
@@ -1558,7 +1571,10 @@ function FileChangeCard({
 
 /// A tool call plus its matching results rendered as one card — routes to the
 /// specialized renderer for the tool (Mac's AdvancedToolCard parity).
-function ToolInvocationCard({
+/// invocation 包装对象每次 buildRenderItems 都是新建的，但内部 primary/responses
+/// 引用的是稳定的 message 对象——memo 比较器按底层引用判等，让未变化的工具卡
+/// 在流式 flush 时跳过重渲染（卡片内部要做 payload 解析，重渲不便宜）。
+const ToolInvocationCard = memo(function ToolInvocationCard({
   invocation,
   onOpenFile
 }: {
@@ -1602,7 +1618,12 @@ function ToolInvocationCard({
       ))}
     </div>
   );
-}
+}, (prev, next) =>
+  prev.onOpenFile === next.onOpenFile &&
+  prev.invocation.primary === next.invocation.primary &&
+  prev.invocation.responses.length === next.invocation.responses.length &&
+  prev.invocation.responses.every((response, index) => response === next.invocation.responses[index])
+);
 
 function GenericToolRow({ message, onOpenFile }: { message: ChatMessage; onOpenFile: (path: string) => void | Promise<void> }) {
   const [expanded, setExpanded] = useState(message.kind === "error" || message.status === "failed");
@@ -1769,7 +1790,7 @@ function TodoToolCard({ rows }: { rows: TodoToolItem[] }) {
 
 /// Runs of ≥2 read/grep/glob invocations collapse into one batch card (Mac
 /// coalesceToolBatches parity) so file-scanning runs stay out of the way.
-function ToolBatchCard({
+const ToolBatchCard = memo(function ToolBatchCard({
   invocations,
   onOpenFile
 }: {
@@ -1802,7 +1823,16 @@ function ToolBatchCard({
       ) : null}
     </div>
   );
-}
+}, (prev, next) =>
+  prev.onOpenFile === next.onOpenFile &&
+  prev.invocations.length === next.invocations.length &&
+  prev.invocations.every(
+    (invocation, index) =>
+      invocation.primary === next.invocations[index]?.primary &&
+      invocation.responses.length === next.invocations[index]?.responses.length &&
+      invocation.responses.every((response, responseIndex) => response === next.invocations[index]?.responses[responseIndex])
+  )
+);
 
 function DiagnosticEventCard({ message }: { message: ChatMessage }) {
   return (
@@ -1828,11 +1858,15 @@ function SystemEventCard({ message }: { message: ChatMessage }) {
 
 function PermissionRequestCard({ message }: { message: ChatMessage }) {
   const respondToPermission = useChatStore((state) => state.respondToPermission);
-  const waiting = message.status === "waiting";
+  const sessionCLI = useChatStore((state) => state.currentSession?.cli);
+  const defaultCLI = useSettingsStore((state) => state.settings?.defaultCLI);
+  // 通用 CLI 进程侧恒回 false——按钮不可点，只如实展示请求，不做假按钮。
+  const capable = chatCLISupportsInteractiveControls(sessionCLI ?? defaultCLI ?? "claude");
+  const waiting = capable && message.status === "waiting";
 
   function respond(decision: PermissionDecision) {
     if (message.requestID) {
-      respondToPermission(message.requestID, decision);
+      void respondToPermission(message.requestID, decision);
     }
   }
 
@@ -1851,6 +1885,7 @@ function PermissionRequestCard({ message }: { message: ChatMessage }) {
           本会话允许
         </button>
       </div>
+      {!capable && message.status === "waiting" ? <small>当前 CLI 不支持会话内权限交互，请改用权限模式后重试。</small> : null}
     </div>
   );
 }
@@ -1859,8 +1894,12 @@ function InteractiveRequestCard({ request }: { request: InteractiveRequest }) {
   const [selectedOptionIDs, setSelectedOptionIDs] = useState<string[]>([]);
   const [customText, setCustomText] = useState("");
   const respondToInteractiveRequest = useChatStore((state) => state.respondToInteractiveRequest);
-  const waiting = request.status === "waiting";
-  const canSubmit = waiting && (selectedOptionIDs.length > 0 || customText.trim().length > 0 || request.mode === "text");
+  const sessionCLI = useChatStore((state) => state.currentSession?.cli);
+  const defaultCLI = useSettingsStore((state) => state.settings?.defaultCLI);
+  const capable = chatCLISupportsInteractiveControls(sessionCLI ?? defaultCLI ?? "claude");
+  const waiting = capable && request.status === "waiting";
+  // text 模式也要求非空：空提交会让后端回 false 走 failed，属于假可点。
+  const canSubmit = waiting && (selectedOptionIDs.length > 0 || customText.trim().length > 0);
 
   function toggleOption(optionID: string) {
     setSelectedOptionIDs((current) => {
@@ -1876,7 +1915,7 @@ function InteractiveRequestCard({ request }: { request: InteractiveRequest }) {
       return;
     }
     const optionIDs = optionID ? [optionID] : selectedOptionIDs;
-    respondToInteractiveRequest({
+    void respondToInteractiveRequest({
       requestID: request.id,
       selectedOptionIDs: optionIDs,
       customText: customText.trim() || null
@@ -1924,6 +1963,7 @@ function InteractiveRequestCard({ request }: { request: InteractiveRequest }) {
           提交
         </button>
       </div>
+      {!capable && request.status === "waiting" ? <small>当前 CLI 不支持会话内交互，此问题仅供参考。</small> : null}
     </div>
   );
 }

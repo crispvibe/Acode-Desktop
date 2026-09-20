@@ -172,75 +172,97 @@ final class RemoteWebSocketClient: RemoteTransport {
         }
     }
 
+    /// 帧解码结果 —— decode 在 URLSession delegate 队列上完成（非主线程），
+    /// 只有派发回到主线程做回调。流式期间 host 每 ~30ms 推一个 panel_state
+    /// patch，若 JSON 解码也在主线程，会叠加 @Published 发布/行重建一起卡 UI。
+    private enum DecodedReceive {
+        case frame(RemoteTransportFrameCodec.DecodedFrame)
+        case decodeFailure(String)
+    }
+
     private func receiveNext(epoch: UInt64) {
         guard let task, currentEpoch == epoch else { return }
+        // codec 是不可变 struct，按值捕获后即可在 delegate 队列安全使用。
+        // （类本身因 RemoteTransport 协议是 @MainActor —— 若不把 codec 拿出来，
+        //  decode 会被推断回主线程，失去离主线程解码的意义。）
+        let codec = self.codec
         task.receive { [weak self] result in
             guard let self, !self.intentionallyClosed, self.currentEpoch == epoch else { return }
-            Task { @MainActor in
-                guard !self.intentionallyClosed, self.currentEpoch == epoch else { return }
-                switch result {
-                case .success(let message):
-                    self.handle(message: message)
+            switch result {
+            case .success(let message):
+                // URLSessionWebSocketTask.receive 回调在 session 的 delegate 队列
+                // 上串行派发 —— 在这里做 JSON 解码，解码完只把已解析帧抛回主线程。
+                let decoded = Self.decode(message, codec: codec)
+                Task { @MainActor in
+                    guard !self.intentionallyClosed, self.currentEpoch == epoch else { return }
+                    self.handle(decoded: decoded)
                     self.receiveNext(epoch: epoch)
-                case .failure(let error):
+                }
+            case .failure(let error):
+                Task { @MainActor in
+                    guard !self.intentionallyClosed, self.currentEpoch == epoch else { return }
                     self.fail(error, epoch: epoch)
                 }
             }
         }
     }
 
-    private func handle(message: URLSessionWebSocketTask.Message) {
+    nonisolated private static func decode(_ message: URLSessionWebSocketTask.Message, codec: RemoteTransportFrameCodec) -> DecodedReceive {
         let text: String
         switch message {
         case .string(let value):
             text = value
         case .data(let data):
             guard let value = String(data: data, encoding: .utf8) else {
-                onDecodeFailure?("<binary frame>")
-                return
+                return .decodeFailure("<binary frame>")
             }
             text = value
         @unknown default:
-            onDecodeFailure?("<unknown frame>")
-            return
+            return .decodeFailure("<unknown frame>")
         }
 
         do {
-            switch try codec.decode(text: text) {
-            case .panelState(let envelope):
-                if !isConnected {
-                    isConnected = true
-                    onConnect?()
-                }
-                onEnvelope?(envelope)
-            case .commandAck(let ack):
-                // Ack 是"服务端往这条连接回了帧"的最硬证据。如果 hello/panel_state
-                // 因为任何原因没到(比如 .empty 的 resume payload),靠 ack 也能把
-                // isConnected 翻起来,让 onConnect 走起来,replayPendingCommands
-                // 不会卡死在 pending 里。
-                if !isConnected {
-                    isConnected = true
-                    onConnect?()
-                }
-                onAck?(ack)
-            case .recoveryResponse(let response):
-                if !isConnected {
-                    isConnected = true
-                    onConnect?()
-                }
-                onRecoveryResponse?(response)
-            case .hello:
-                // Server 老路径可能还会发 hello。仅当作连接 OK 的信号即可，状态走 panel_state。
-                if !isConnected {
-                    isConnected = true
-                    onConnect?()
-                }
-            case .ignored:
-                // 旧协议事件统一忽略（Phase B 兼容）。
-                break
-            }
+            return .frame(try codec.decode(text: text))
         } catch {
-            onDecodeFailure?("\(error.localizedDescription): \(String(text.prefix(200)))")
+            return .decodeFailure("\(error.localizedDescription): \(String(text.prefix(200)))")
+        }
+    }
+
+    private func handle(decoded: DecodedReceive) {
+        switch decoded {
+        case .frame(.panelState(let envelope)):
+            if !isConnected {
+                isConnected = true
+                onConnect?()
+            }
+            onEnvelope?(envelope)
+        case .frame(.commandAck(let ack)):
+            // Ack 是"服务端往这条连接回了帧"的最硬证据。如果 hello/panel_state
+            // 因为任何原因没到(比如 .empty 的 resume payload),靠 ack 也能把
+            // isConnected 翻起来,让 onConnect 走起来,replayPendingCommands
+            // 不会卡死在 pending 里。
+            if !isConnected {
+                isConnected = true
+                onConnect?()
+            }
+            onAck?(ack)
+        case .frame(.recoveryResponse(let response)):
+            if !isConnected {
+                isConnected = true
+                onConnect?()
+            }
+            onRecoveryResponse?(response)
+        case .frame(.hello):
+            // Server 老路径可能还会发 hello。仅当作连接 OK 的信号即可，状态走 panel_state。
+            if !isConnected {
+                isConnected = true
+                onConnect?()
+            }
+        case .frame(.ignored):
+            // 旧协议事件统一忽略（Phase B 兼容）。
+            break
+        case .decodeFailure(let preview):
+            onDecodeFailure?(preview)
         }
     }
 

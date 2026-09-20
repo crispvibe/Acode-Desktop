@@ -9,7 +9,13 @@ struct ChatTranscriptStructureKey: Equatable {
         let id: UUID
         let kind: ChatMessageKind
         let isStreaming: Bool
-        let streamingTextLength: Int
+        // Presence-only flag (not the text length): the structure key decides whether a full
+        // rebuild is needed. Streaming deltas change the length on EVERY flush, which used to
+        // force a synchronous O(messages) rebuild on the main thread per flush — the main
+        // streaming stutter. Visibility only flips when text goes empty→non-empty, so a Bool
+        // preserves that signal without re-triggering a rebuild per delta. Live row content
+        // updates via StreamingTextStore / the per-item fingerprint (textLength) instead.
+        let hasStreamingText: Bool
         let title: String
         let subtitle: String
         let status: String

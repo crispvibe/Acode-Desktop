@@ -80,6 +80,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,6 +96,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -492,9 +494,22 @@ private fun MessageList(
     val streamingSignature = remember(streamingTexts) {
         streamingTexts.joinToString("|") { "${it.messageId}:${it.text.length}:${it.status}" }
     }
+    // 仅在用户仍接近底部时才跟随增量。流式 patch 最高 ~30/s，
+    // 原实现每个 patch 都无条件 animateScrollToItem 到末条 —— 既反复启动
+    // 滚动动画造成抖动，又会在用户上滑阅读历史时把滚动位置抢回底部。
+    // scrollToItem 是无动画的即时吸附；不上滑抢位置由 isNearBottom 门控。
+    val bottomFollowThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
+    val isNearBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return@derivedStateOf true
+            if (lastVisible.index < info.totalItemsCount - 1) return@derivedStateOf false
+            lastVisible.offset + lastVisible.size - info.viewportEndOffset <= bottomFollowThresholdPx
+        }
+    }
     LaunchedEffect(visibleMessages.size, visibleMessages.lastOrNull()?.id, streamingSignature) {
-        if (visibleMessages.isNotEmpty()) {
-            listState.animateScrollToItem(visibleMessages.lastIndex)
+        if (visibleMessages.isNotEmpty() && isNearBottom) {
+            listState.scrollToItem(visibleMessages.lastIndex)
         }
     }
     LazyColumn(
@@ -815,7 +830,10 @@ private fun MessageMetaRow(title: String, status: String) {
 @Composable
 private fun PermissionRequestCard(message: RemoteChatMessage, respondPermission: (String, String) -> Unit) {
     val requestId = message.requestID.orEmpty()
-    val waiting = message.status.isBlank() || message.status == "waiting"
+    // 严格跟随 host 的 resolved 状态：host 落库时明确写 "waiting"，
+    // 回执成功后翻成 allowed/denied。空 status 不能当作 waiting ——
+    // 否则已处理/不支持的请求会显示一排点了没反应的"假按钮"。
+    val waiting = message.status == "waiting"
     CodevokeSoftGlass(
         modifier = Modifier.fillMaxWidth(0.94f),
         shape = RoundedCornerShape(20.dp),
@@ -848,9 +866,15 @@ private fun InteractiveRequestCard(
         title = message.title,
         prompt = message.text,
     )
+    // 协议模式：singleChoice / multipleChoice / text。原实现只有单个
+    // selectedOptionId，多选请求无法表达多选；这里按 mode 分开处理。
+    val isMultipleChoice = request.mode == "multipleChoice"
+    val isTextMode = request.mode == "text"
     var selectedOptionId by remember(request.id) { mutableStateOf(request.options.firstOrNull()?.id.orEmpty()) }
+    var selectedOptionIds by remember(request.id) { mutableStateOf(setOf<String>()) }
     var customText by remember(request.id) { mutableStateOf("") }
-    val waiting = request.status == "waiting" || message.status.isBlank() || message.status == "waiting"
+    // 同 permission 卡：只信 host 写入的 waiting 状态，空 status 不当作可交互。
+    val waiting = request.status == "waiting" || message.status == "waiting"
 
     CodevokeSoftGlass(
         modifier = Modifier.fillMaxWidth(0.94f),
@@ -869,16 +893,35 @@ private fun InteractiveRequestCard(
                 lineHeight = 20.sp,
             )
             if (waiting) {
-                request.options.forEach { option ->
-                    OptionChip(
-                        text = option.label,
-                        subtitle = option.detail,
-                        selected = selectedOptionId == option.id,
-                        enabled = true,
-                        onClick = { selectedOptionId = option.id },
-                    )
+                if (!isTextMode) {
+                    request.options.forEach { option ->
+                        val selected = if (isMultipleChoice) {
+                            selectedOptionIds.contains(option.id)
+                        } else {
+                            selectedOptionId == option.id
+                        }
+                        OptionChip(
+                            text = option.label,
+                            subtitle = option.detail,
+                            selected = selected,
+                            enabled = true,
+                            onClick = {
+                                if (isMultipleChoice) {
+                                    selectedOptionIds = if (selected) {
+                                        selectedOptionIds - option.id
+                                    } else {
+                                        selectedOptionIds + option.id
+                                    }
+                                } else {
+                                    selectedOptionId = option.id
+                                }
+                            },
+                        )
+                    }
                 }
-                if (request.allowCustomInput || request.options.isEmpty()) {
+                // text 模式恒有输入框；其余模式仅在 allowCustomInput 或
+                // 没有可选项时给自定义输入。
+                if (isTextMode || request.allowCustomInput || request.options.isEmpty()) {
                     TextField(
                         value = customText,
                         onValueChange = { customText = it },
@@ -895,11 +938,19 @@ private fun InteractiveRequestCard(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                val selectedIds = when {
+                    isTextMode -> emptyList()
+                    isMultipleChoice -> request.options.map { it.id }.filter { selectedOptionIds.contains(it) }
+                    else -> selectedOptionId.takeIf { it.isNotBlank() }?.let { listOf(it) }.orEmpty()
+                }
+                val trimmedCustom = customText.trim()
+                // 没有任何选择也没有文本时不给提交 —— 空响应等同"取消"，
+                // 但对用户而言点了没反应就像按钮坏了。
+                val canSubmit = trimmedCustom.isNotEmpty() || selectedIds.isNotEmpty()
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CompactActionButton("取消") { respondInteractive(request.id, emptyList(), null) }
-                    CompactActionButton("提交", dark = true) {
-                        val selected = selectedOptionId.takeIf { it.isNotBlank() }?.let { listOf(it) }.orEmpty()
-                        respondInteractive(request.id, selected, customText.trim().ifBlank { null })
+                    CompactActionButton("提交", dark = true, enabled = canSubmit) {
+                        respondInteractive(request.id, selectedIds, trimmedCustom.ifBlank { null })
                     }
                 }
             }
@@ -1121,10 +1172,11 @@ private fun CompactPill(text: String, selected: Boolean, enabled: Boolean, onCli
 }
 
 @Composable
-private fun CompactActionButton(text: String, dark: Boolean = false, onClick: () -> Unit) {
+private fun CompactActionButton(text: String, dark: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
     if (dark) {
         Button(
             onClick = onClick,
+            enabled = enabled,
             colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
             shape = RoundedCornerShape(999.dp),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
@@ -1135,6 +1187,7 @@ private fun CompactActionButton(text: String, dark: Boolean = false, onClick: ()
     } else {
         TextButton(
             onClick = onClick,
+            enabled = enabled,
             colors = ButtonDefaults.textButtonColors(contentColor = CodevokeColor.Ink),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
             modifier = Modifier.height(32.dp),
