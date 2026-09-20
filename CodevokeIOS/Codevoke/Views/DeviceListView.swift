@@ -59,7 +59,7 @@ struct DeviceListView: View {
             Text(L10n.key("选择电脑"))
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(Color.codevokeInk)
-            Text(L10n.key("同一 Wi‑Fi 下自动发现运行 Codevoke 的电脑，点击即连。"))
+            Text(L10n.key("同一 Wi‑Fi 下自动发现运行 acode 的电脑，点击即连。"))
                 .font(.system(size: 14))
                 .foregroundStyle(Color.codevokeMuted)
         }

@@ -59,7 +59,7 @@ export function ProjectSidebar({ chooseProjectPath, onOpenFile, onOpenSettings }
       </div>
       <button className="settings-entry" type="button" onClick={onOpenSettings}>
         <Settings size={17} />
-        <span>Codevoke 设置</span>
+        <span>acode 设置</span>
       </button>
     </aside>
   );

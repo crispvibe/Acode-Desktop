@@ -509,7 +509,7 @@ struct ChatPanelView: View {
     var appDisplayName: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
-            ?? "Codevoke"
+            ?? "acode"
     }
 
     var transcript: some View {

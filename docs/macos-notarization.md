@@ -2,25 +2,25 @@
 
 ## 当前状态
 
-- 目标产物：`build/releases/codevoke-macos.dmg`
+- 目标产物：`build/releases/acode-macos.dmg`
 - App bundle：`Codevoke.app`
 - Bundle ID：`com.codevoke.mac`
 - Apple ID：`99400504@qq.com`
 - Team ID：`$CODEVOKE_TEAM_ID`
 - Developer ID 证书：`$CODEVOKE_SIGNING_AUTHORITY`
-- notarytool Keychain profile：`codevoke-notary`
+- notarytool Keychain profile：`acode-notary`
 - 默认架构：Universal（`arm64 x86_64`）
 - WebRTC framework：已验证包含 `x86_64 arm64`
 
-`codevoke-notary` 已通过 App 专用密码验证并保存到本机 Keychain。不要把 App 专用密码明文写入仓库、脚本或命令历史；需要更新密码时重新执行 `store-credentials` 覆盖同名 profile。
+`acode-notary` 已通过 App 专用密码验证并保存到本机 Keychain。不要把 App 专用密码明文写入仓库、脚本或命令历史；需要更新密码时重新执行 `store-credentials` 覆盖同名 profile。
 
 > 安全提醒：如果 App 专用密码曾经出现在仓库、聊天记录、截图或命令历史里，先到 Apple ID 后台撤销旧密码并重新生成，再用下面的 `store-credentials` 覆盖本机 Keychain profile。
 ## 一次性凭据配置
 
-如果本机 Keychain 已存在 `codevoke-notary`，不用重复配置。缺失或密码轮换后执行：
+如果本机 Keychain 已存在 `acode-notary`，不用重复配置。缺失或密码轮换后执行：
 
 ```bash
-xcrun notarytool store-credentials "codevoke-notary" \
+xcrun notarytool store-credentials "acode-notary" \
   --apple-id "99400504@qq.com" \
   --team-id "$CODEVOKE_TEAM_ID"
 ```
@@ -30,7 +30,7 @@ xcrun notarytool store-credentials "codevoke-notary" \
 ```text
 Success. Credentials validated.
 Credentials saved to Keychain.
-To use them, specify `--keychain-profile "codevoke-notary"`
+To use them, specify `--keychain-profile "acode-notary"`
 ```
 
 ## 标准打包
@@ -42,13 +42,13 @@ scripts/package-macos-app.sh
 脚本会执行：
 
 1. 检查本机 Developer ID 签名证书。
-2. 使用 `Codevoke.xcodeproj` / `Codevoke` scheme 构建 Release。
+2. 使用 `Codevoke.xcodeproj` / `acode` scheme 构建 Release。
 3. 强制 Universal 构建：`ARCHS="arm64 x86_64"`、`ONLY_ACTIVE_ARCH=NO`。
 4. 用 `lipo` 校验主程序和内嵌 Mach-O framework 架构。
 5. 对内嵌 `.framework` 使用 Developer ID、Hardened Runtime、secure timestamp 重签。
 6. 对 `Codevoke.app` 使用 `Codevoke/Codevoke.entitlements`、Developer ID、Hardened Runtime、secure timestamp 重签。
 7. 校验 `codesign --verify --deep --strict`、签名 Authority 和 Team ID。
-8. strip 发布包符号、校验无 debug entitlement，生成并签名 `build/releases/codevoke-macos.dmg`。
+8. strip 发布包符号、校验无 debug entitlement，生成并签名 `build/releases/acode-macos.dmg`。
 
 如果要一键提交 Apple 公证并 staple 票据：
 
@@ -59,8 +59,8 @@ NOTARIZE=1 scripts/package-macos-app.sh
 ## 提交 Apple 公证
 
 ```bash
-xcrun notarytool submit build/releases/codevoke-macos.dmg \
-  --keychain-profile "codevoke-notary" \
+xcrun notarytool submit build/releases/acode-macos.dmg \
+  --keychain-profile "acode-notary" \
   --wait \
   --timeout 30m
 ```
@@ -75,7 +75,7 @@ status: Accepted
 
 ```bash
 xcrun notarytool log <submission-id> \
-  --keychain-profile "codevoke-notary" \
+  --keychain-profile "acode-notary" \
   notarization-log.json
 ```
 
@@ -93,8 +93,8 @@ xcrun notarytool log <submission-id> \
 公证 `Accepted` 后，把 Apple 公证票据 stapled 到 DMG：
 
 ```bash
-xcrun stapler staple build/releases/codevoke-macos.dmg
-xcrun stapler validate build/releases/codevoke-macos.dmg
+xcrun stapler staple build/releases/acode-macos.dmg
+xcrun stapler validate build/releases/acode-macos.dmg
 ```
 
 成功输出应包含：
@@ -109,7 +109,7 @@ The validate action worked!
 验证 DMG：
 
 ```bash
-spctl -a -vv -t open --context context:primary-signature build/releases/codevoke-macos.dmg
+spctl -a -vv -t open --context context:primary-signature build/releases/acode-macos.dmg
 ```
 
 期望：
@@ -137,13 +137,13 @@ origin=<Developer ID Application identity>
 验证 DMG 文件完整性：
 
 ```bash
-hdiutil verify build/releases/codevoke-macos.dmg
+hdiutil verify build/releases/acode-macos.dmg
 ```
 
 期望：
 
 ```text
-checksum of "build/releases/codevoke-macos.dmg" is VALID
+checksum of "build/releases/acode-macos.dmg" is VALID
 ```
 
 ## 已跑通过的本机证据
@@ -151,7 +151,7 @@ checksum of "build/releases/codevoke-macos.dmg" is VALID
 临时测试产物：
 
 - App：`/tmp/CodevokeIntelCheck.app`
-- DMG：`/tmp/codevoke-macos-intel-check.dmg`
+- DMG：`/tmp/acode-macos-intel-check.dmg`
 
 第一次提交结果：
 
@@ -163,11 +163,11 @@ checksum of "build/releases/codevoke-macos.dmg" is VALID
 
 - Submission ID：`260ee028-d3d0-4059-9a19-2e31b18763c2`
 - 状态：`Accepted`
-- `xcrun stapler staple /tmp/codevoke-macos-intel-check.dmg`：通过
-- `xcrun stapler validate /tmp/codevoke-macos-intel-check.dmg`：通过
+- `xcrun stapler staple /tmp/acode-macos-intel-check.dmg`：通过
+- `xcrun stapler validate /tmp/acode-macos-intel-check.dmg`：通过
 - `spctl -a -vv /tmp/CodevokeIntelCheck.app`：`accepted / Notarized Developer ID`
-- `spctl -a -vv -t open --context context:primary-signature /tmp/codevoke-macos-intel-check.dmg`：`accepted / Notarized Developer ID`
-- `hdiutil verify /tmp/codevoke-macos-intel-check.dmg`：checksum valid
+- `spctl -a -vv -t open --context context:primary-signature /tmp/acode-macos-intel-check.dmg`：`accepted / Notarized Developer ID`
+- `hdiutil verify /tmp/acode-macos-intel-check.dmg`：checksum valid
 
 ## 正式发布顺序
 
@@ -178,15 +178,15 @@ NOTARIZE=1 scripts/package-macos-app.sh
 脚本会自动执行以下公证、staple 和 DMG 校验；如需手工排障，可单独运行：
 
 ```bash
-xcrun notarytool submit build/releases/codevoke-macos.dmg \
-  --keychain-profile "codevoke-notary" \
+xcrun notarytool submit build/releases/acode-macos.dmg \
+  --keychain-profile "acode-notary" \
   --wait \
   --timeout 30m
 
-xcrun stapler staple build/releases/codevoke-macos.dmg
-xcrun stapler validate build/releases/codevoke-macos.dmg
-spctl -a -vv -t open --context context:primary-signature build/releases/codevoke-macos.dmg
-hdiutil verify build/releases/codevoke-macos.dmg
+xcrun stapler staple build/releases/acode-macos.dmg
+xcrun stapler validate build/releases/acode-macos.dmg
+spctl -a -vv -t open --context context:primary-signature build/releases/acode-macos.dmg
+hdiutil verify build/releases/acode-macos.dmg
 ```
 
-全部通过后，`build/releases/codevoke-macos.dmg` 才是可上传到 `/downloads/codevoke-macos.dmg` 的正式 macOS 安装包。
+全部通过后，`build/releases/acode-macos.dmg` 才是可上传到 `/downloads/acode-macos.dmg` 的正式 macOS 安装包。

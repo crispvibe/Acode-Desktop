@@ -18,7 +18,7 @@ final class DeviceListViewModel: ObservableObject {
 
         hosts = await LanSubnetProbe.discoverHealthHosts(port: port, preferredHost: preferredHost)
         if hosts.isEmpty {
-            message = L10n.string("没有在本局域网找到运行 Codevoke 的电脑，请确认电脑端已开启设备连接服务，或手动输入地址。")
+            message = L10n.string("没有在本局域网找到运行 acode 的电脑，请确认电脑端已开启设备连接服务，或手动输入地址。")
         }
     }
 }

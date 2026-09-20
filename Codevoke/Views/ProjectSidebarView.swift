@@ -393,7 +393,7 @@ struct ProjectSidebarView: View {
             HStack(spacing: 8) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 14, weight: .medium))
-                Text("Codevoke 设置")
+                Text("acode 设置")
                     .font(.system(size: 13, weight: .medium))
                 Spacer()
             }

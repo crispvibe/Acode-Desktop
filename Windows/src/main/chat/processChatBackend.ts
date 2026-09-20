@@ -502,8 +502,8 @@ export class ChatProcessRun {
     this.child = child;
     const initializeID = this.sendCodexRequest("initialize", {
       clientInfo: {
-        name: "Codevoke",
-        title: "Codevoke",
+        name: "acode",
+        title: "acode",
         version: "0.1.0"
       },
       capabilities: {
@@ -712,7 +712,7 @@ export class ChatProcessRun {
       if (isCodexFileReadRequest(method)) {
         return this.eventsFromCodexReadFileRequest(object, id, method);
       }
-      this.sendCodexErrorResponse(id, -32601, `Codevoke Windows 暂不支持 Codex server request: ${method}`);
+      this.sendCodexErrorResponse(id, -32601, `acode Windows 暂不支持 Codex server request: ${method}`);
       return [{ type: "appendMessage", kind: "rawOutput", title: method, subtitle: "unsupported request", text: compactText(object), status: "unsupported", requestID: requestKey(id) ?? null }];
     }
     return this.eventsFromCodexNotification(object, method);
@@ -956,7 +956,7 @@ export class ChatProcessRun {
       cwd: options.projectPath,
       approvalPolicy: codexApprovalPolicy(options.permissionMode),
       sandbox: codexSandbox(options.permissionMode),
-      serviceName: "Codevoke"
+      serviceName: "acode"
     };
     if (isExplicitModelID(options.modelID)) {
       params.model = options.modelID;

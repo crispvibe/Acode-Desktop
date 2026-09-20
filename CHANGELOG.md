@@ -33,7 +33,7 @@
 - 补充 `remote_test.go` 单测与 `003_remote_device_lan.sql` 迁移
 - 新增 `scripts/deploy-acode-api.sh` 部署脚本
 
-### macOS（Codevoke 宿主）
+### macOS（acode 宿主）
 
 - 新增 `LanTokenPublisher` 周期性发布局域网地址与 transient token
 - 新增 `LanNetworkAddress` 本机局域网 IP 探测

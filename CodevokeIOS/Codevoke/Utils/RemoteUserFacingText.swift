@@ -13,7 +13,7 @@ enum RemoteUserFacingText {
         case "manual_rejected", "user_rejected", "rejected":
             return L10n.string("电脑端已拒绝本次连接。")
         case "device_offline":
-            return L10n.string("目标设备当前离线，请打开电脑端 Codevoke 后重试。")
+            return L10n.string("目标设备当前离线，请打开电脑端 acode 后重试。")
         case "device_disabled":
             return L10n.string("目标设备已关闭远程连接。")
         case "grant_required":

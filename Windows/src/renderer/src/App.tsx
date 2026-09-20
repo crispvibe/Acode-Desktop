@@ -298,7 +298,7 @@ function Workbench({
                 <div className="app-logo" aria-hidden="true">
                   <AppLogo />
                 </div>
-                <span className="brand-title">Codevoke</span>
+                <span className="brand-title">acode</span>
                 <span className="brand-divider" aria-hidden="true" />
                 <button className="project-switch window-no-drag" type="button" onClick={() => setHistoryOpen(!historyOpen)}>
                   <span className="project-switch-title">{projectTitle}</span>

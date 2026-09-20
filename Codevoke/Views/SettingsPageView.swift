@@ -514,7 +514,7 @@ struct SettingsPageView: View {
                 )
                 connectionRail(isActive: isServerReady)
                 connectionNode(
-                    title: "Codevoke Mac",
+                    title: "acode (Mac)",
                     subtitle: "本机设备",
                     systemImage: "desktopcomputer",
                     isActive: isServerReady
@@ -778,7 +778,7 @@ struct SettingsPageView: View {
                     .disabled(isGlobalRuleTooLarge || globalRuleStatus.hasPrefix("读取失败"))
             }
 
-            Text("保存后需要重启 Codevoke 或开启新的 CLI 会话后生效。")
+            Text("保存后需要重启 acode 或开启新的 CLI 会话后生效。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -1192,7 +1192,7 @@ struct SettingsPageView: View {
         VStack(alignment: .leading, spacing: 14) {
             settingsCard(title: "关于") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Codevoke")
+                    Text("acode")
                         .font(.system(size: 15, weight: .semibold))
                     Text("一个轻量级的 Claude Code / Codex 桌面客户端")
                         .font(.system(size: 13))
@@ -1736,7 +1736,7 @@ struct SettingsPageView: View {
         do {
             try FileManager.default.createDirectory(at: globalRuleURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try globalRuleText.write(to: globalRuleURL, atomically: true, encoding: .utf8)
-            globalRuleStatus = "已保存，重启 Codevoke 或开启新 CLI 会话后生效"
+            globalRuleStatus = "已保存，重启 acode 或开启新 CLI 会话后生效"
         } catch {
             globalRuleStatus = "保存失败：\(error.localizedDescription)"
         }

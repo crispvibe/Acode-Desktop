@@ -2,7 +2,7 @@
 
 审计员: QA agent C (read-only)
 日期: 2026-05-16
-范围: iOS `Codevoke` + Mac `Codevoke.app` UI / 项目 / 文件树 / 设置面板。仅做静态 code trace，未跑 simulator。
+范围: iOS `acode` + Mac `Codevoke.app` UI / 项目 / 文件树 / 设置面板。仅做静态 code trace，未跑 simulator。
 互不重叠的两个 agent 负责"连接+协议"和"消息流+streaming"。
 
 ---

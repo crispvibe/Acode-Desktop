@@ -366,8 +366,8 @@ final class CodexAppServerBackend: ChatProcessBackend {
         locked {
             let id = sendRequest(method: "initialize", params: [
                 "clientInfo": [
-                    "name": "Codevoke",
-                    "title": "Codevoke",
+                    "name": "acode",
+                    "title": "acode",
                     "version": "1.0"
                 ],
                 "capabilities": [
@@ -385,7 +385,7 @@ final class CodexAppServerBackend: ChatProcessBackend {
             "model": options.modelID,
             "approvalPolicy": options.permissionMode.codexApprovalPolicy,
             "sandbox": options.permissionMode.codexSandbox,
-            "serviceName": "Codevoke"
+            "serviceName": "acode"
         ]
 
         let method: String

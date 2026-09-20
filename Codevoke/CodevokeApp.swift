@@ -122,7 +122,7 @@ private struct WindowConfigurator: NSViewRepresentable {
     }
 
     private func localizedMenuTitle(_ title: String) -> String {
-        let appName = "Codevoke"
+        let appName = "acode"
         let replacements = [
             "File": "文件",
             "Edit": "编辑",

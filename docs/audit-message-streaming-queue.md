@@ -1,8 +1,8 @@
 # 域 B 审计 —— 消息流 / streaming / queue / 工具·权限·附件
 
 审计时间:2026-05-16  
-仓库:`/Users/oreo/Desktop/Codevoke` (HEAD = `cf10bef`)  
-端点:`127.0.0.1:18765`,Mac App = 已加载到 Codevoke 进程  
+仓库:`/Users/oreo/Desktop/acode` (HEAD = `cf10bef`)  
+端点:`127.0.0.1:18765`,Mac App = 已加载到 acode 进程  
 方式:静态读码 + 三轮活体 WS 验证(`/tmp/qa_*.py`)。**未修改任何代码、未 commit。**
 
 ---
@@ -99,7 +99,7 @@
 | # | 场景 | 结论 | 关键位置 |
 |---|---|---|---|
 | 35 | 全空白消息 | ✓ | `ChatPanelState.swift:426` guard;**但 iOS `ChatViewModel.swift:240` 也 guard 过一次**,前后一致 |
-| 36 | 超长消息(>50KB)stdin hang | ⚠ | `ChatPipeWriter.writeJSONObject` (`ChatProcessBackend.swift:38-51`)调 `fileHandleForWriting.write(contentsOf: data)` 是**同步阻塞** API,在 main thread 之外的 detached task 里执行还好,但**没有写超时**。极端场景:claude 进程卡住不读 stdin,Codevoke 这边 `Task.detached` 永远卡在 write;见 P1-4 |
+| 36 | 超长消息(>50KB)stdin hang | ⚠ | `ChatPipeWriter.writeJSONObject` (`ChatProcessBackend.swift:38-51`)调 `fileHandleForWriting.write(contentsOf: data)` 是**同步阻塞** API,在 main thread 之外的 detached task 里执行还好,但**没有写超时**。极端场景:claude 进程卡住不读 stdin,acode 这边 `Task.detached` 永远卡在 write;见 P1-4 |
 | 37 | emoji/中文/JSON 注入 | ✓ | `ChatPipeWriter` 用 `JSONSerialization.data(withJSONObject:)` 会自动转义,引号/反斜杠不会注入 |
 | 38 | 换行 / markdown / code block | ✓ | 同上,JSON 序列化保证安全 |
 
@@ -154,7 +154,7 @@
 
 ### P1-4 stdin 写入无超时
 **位置**:`ChatProcessBackend.swift:38-51` `ChatPipeWriter.writeJSONObject` → `pipe.fileHandleForWriting.write(contentsOf: data)`。  
-**症状**:`FileHandle.write` 是阻塞 API。若 claude 进程不读 stdin(死锁、CPU pinned),Codevoke 这边 detached task 永远卡在 write,该 session 的 `currentTask` 也不会 cancel。  
+**症状**:`FileHandle.write` 是阻塞 API。若 claude 进程不读 stdin(死锁、CPU pinned),acode 这边 detached task 永远卡在 write,该 session 的 `currentTask` 也不会 cancel。  
 **修复方案**:`DispatchQueue.global().async + DispatchSemaphore.wait(timeout: .now() + 2)` 包一层 watchdog;超时 → 杀进程 + 上报 `.failed`。
 
 ### P1-5 stop 在 iOS 进同一 send chain,无法插队
@@ -227,7 +227,7 @@
 
 ```bash
 # Mac App 启动:
-killall Codevoke 2>/dev/null; sleep 1; open /Users/oreo/Desktop/Codevoke.app; sleep 9
+killall acode 2>/dev/null; sleep 1; open /Users/oreo/Desktop/Codevoke.app; sleep 9
 
 # Race(send 早于 set 50 ms,验证 500 ms 重试):
 python3 /tmp/qa_race3.py

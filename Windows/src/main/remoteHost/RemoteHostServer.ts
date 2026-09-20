@@ -377,7 +377,7 @@ export class RemoteHostServer {
       this.writeJson(res, 200, {
         status: "ok",
         ok: true,
-        name: "Codevoke Windows",
+        name: "acode (Windows)",
         version: 1,
         bindLAN: this.config.bindLAN,
         port: this.config.port,

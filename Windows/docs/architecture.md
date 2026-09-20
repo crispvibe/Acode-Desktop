@@ -1,8 +1,8 @@
-# Codevoke Windows Architecture
+# acode Windows Architecture
 
 ## Goal
 
-The Windows client mirrors the macOS Codevoke chat semantics rather than the SwiftUI implementation. The first milestone is a stable Electron shell that can host the project tree, editor surface, and chat panel without mixing process responsibilities.
+The Windows client mirrors the macOS acode chat semantics rather than the SwiftUI implementation. The first milestone is a stable Electron shell that can host the project tree, editor surface, and chat panel without mixing process responsibilities.
 
 ## Process Boundary
 

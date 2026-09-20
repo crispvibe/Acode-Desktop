@@ -1,9 +1,9 @@
 {
-  "name": "codevoke-windows",
+  "name": "acode-windows",
   "version": "0.1.0",
   "private": true,
-  "description": "Codevoke Windows desktop client built with Electron, React, and TypeScript.",
-  "author": "Codevoke",
+  "description": "acode — Windows desktop client built with Electron, React, and TypeScript.",
+  "author": "acode",
   "main": "dist/main/main.js",
   "type": "module",
   "scripts": {
@@ -47,8 +47,8 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "com.codevoke.windows",
-    "productName": "Codevoke",
+    "appId": "com.acode.windows",
+    "productName": "acode",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -80,14 +80,14 @@
       }
     ],
     "nsis": {
-      "artifactName": "Codevoke-Setup-${version}-${arch}.${ext}",
+      "artifactName": "acode-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false
     },
     "portable": {
-      "artifactName": "Codevoke-Portable-${version}-${arch}.${ext}"
+      "artifactName": "acode-Portable-${version}-${arch}.${ext}"
     }
   }
 }

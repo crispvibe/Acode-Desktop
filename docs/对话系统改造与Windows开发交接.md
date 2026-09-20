@@ -1,7 +1,7 @@
 # 对话系统改造与 Windows 开发交接文档
 
 生成日期：2026-05-09  
-适用范围：Codevoke/Codevoke 内嵌 Claude Code 与 Codex 对话面板、工具调用 UI、交互请求、队列消息、循序渐进 transcript、后续 Windows 端复刻。
+适用范围：Codevoke/acode 内嵌 Claude Code 与 Codex 对话面板、工具调用 UI、交互请求、队列消息、循序渐进 transcript、后续 Windows 端复刻。
 
 ## 1. 文档目标
 
@@ -55,11 +55,11 @@
 | 队列与恢复 | `QueuedChatRequest` 保存 prompt、project、CLI、model、权限和 resume 上下文；active run 重启后标 failed，不自动重放 | FIFO 语义、崩溃后不重复执行危险 active run、队列持久化 |
 | Transcript | 主线只展示 user/assistant/reasoning/tool/permission/interactive/error；raw/system/result 隐藏 | 虚拟化列表、折叠工具行、Markdown/code/table 轻量渲染、底部跟随判定 |
 | Composer | 自动高度 42–160；IME marked text 时不回写、不发送；建议命令支持整块删除 | Windows IME composition/Enter 必测；草稿保存要 debounce |
-| 历史侧栏 | 当前只显示 Codevoke 本地会话，并按 CLI 过滤：Claude 只显示 Claude，Codex 只显示 Codex；不再扫描外部 Claude/Codex 历史 | 本地 session store 按 CLI 分流；删除同步清 index/transcript；过期异步刷新不得覆盖新状态 |
+| 历史侧栏 | 当前只显示 acode 本地会话，并按 CLI 过滤：Claude 只显示 Claude，Codex 只显示 Codex；不再扫描外部 Claude/Codex 历史 | 本地 session store 按 CLI 分流；删除同步清 index/transcript；过期异步刷新不得覆盖新状态 |
 | Backend | Claude 是 stream-json JSONL；Codex 是 app-server stdio JSON-RPC | Process/pipe/JSONL/JSON-RPC 分层；stdout/stderr 并发读；stdin JSONL 可写 |
 | Agent process | Agent tool 行提供 process 入口，详情 sheet 读取 `subagents/agent-*.jsonl` 和 meta | 复刻 process 入口、2.5s 刷新、pause/resume、subagent block 映射 |
 | 性能 | delta 150ms flush、scroll 0.25s 节流、parse/cache、侧栏轻量化、关键状态才落盘 | 流式批量刷新、Markdown/文件引用/工具摘要缓存、持久化节流、侧栏虚拟化 |
-| 视觉 | 20/18/14/13/12 圆角层级、白色半透明面、弱描边、紧凑列表密度；工具详情走 Codevoke 风格可视化卡片，thinking 行不做边框卡片 | 抽设计 token；用 WinUI/Mica/Acrylic 等效替换 AppKit 毛玻璃 |
+| 视觉 | 20/18/14/13/12 圆角层级、白色半透明面、弱描边、紧凑列表密度；工具详情走 acode 风格可视化卡片，thinking 行不做边框卡片 | 抽设计 token；用 WinUI/Mica/Acrylic 等效替换 AppKit 毛玻璃 |
 | 文档缺口 | 旧文档未覆盖最新多 runtime、Agent process、CLI 过滤历史和性能约束 | 本文以本节和后续章节作为 Windows 复刻最新基线 |
 
 关键证据：
@@ -78,7 +78,7 @@
 
 本轮后 macOS 端的最新基线如下，Windows 端复刻时以这些行为为准：
 
-1. 历史来源：侧栏只展示 Codevoke 自建 `ChatSessionStore` 会话，并按当前 CLI 分流；外部 Claude/Codex 历史扫描不再属于主路径。
+1. 历史来源：侧栏只展示 acode 自建 `ChatSessionStore` 会话，并按当前 CLI 分流；外部 Claude/Codex 历史扫描不再属于主路径。
 2. 工具展示：Read/Edit/Write、Grep/Glob、Bash/终端、Todo、Agent、diff 和泛工具都进入结构化可视化卡片；主 UI 默认不展示 raw JSON envelope。
 3. 终端输出：命令卡片展开后显示 `$ command`，并分区展示 stdout、stderr 和 output。
 4. 文件跳转：工具卡片或文件引用可打开当前项目内文件，并支持 line/column 跳转。
@@ -501,7 +501,7 @@ Windows 复刻建议：
 - 文件工具必须显示工具名 + 文件名；文件名以 chip 展示，点击后在编辑器打开目标文件。
 - `Read/Edit/Write` 等文件操作可从 JSON/text/diff 中提取 path/file/filePath/file_path，无法提取时降级为普通工具行。
 - `Bash`、`command`、`commandOutput` 等终端类工具折叠态必须显示执行命令摘要，长命令单行截断并保留完整 tooltip。
-- 展开后用 Codevoke 风格的浅色可视化详情卡片显示参数、输出或 diff，避免裸露整块 JSON/code；终端类工具使用 `$ command` + stdout/stderr/output 的终端式卡片。
+- 展开后用 acode 风格的浅色可视化详情卡片显示参数、输出或 diff，避免裸露整块 JSON/code；终端类工具使用 `$ command` + stdout/stderr/output 的终端式卡片。
 - 详情卡片保留复制入口，复制终端详情时应包含命令和输出；长命令、长 JSON、diff 支持横向滚动。
 - 工具详情展示层过滤 `id/type/index/session/timestamp/message_start/message_stop/done` 等内部噪音，只保留 command/path/input/output/result/error/message/text/diff 等可理解字段，不能丢失错误原因。
 - 最新运行中的工具行只用静态字体/颜色强调，不做闪烁或 repeat 动画。
@@ -721,9 +721,9 @@ Windows 复刻建议：
 
 ## 13. 历史会话与持久化
 
-### 13.1 本地 Codevoke 会话
+### 13.1 本地 acode 会话
 
-本地聊天数据当前放在 Application Support 的 `Codevoke` 目录，旧 `Codevoke` 和 sandbox 目录会被迁移复制。聊天数据拆为三类：
+本地聊天数据当前放在 Application Support 的 `acode` 目录，旧 `acode` 和 sandbox 目录会被迁移复制。聊天数据拆为三类：
 
 - `chat-sessions.json`：会话索引数组，保存 title、projectPath、CLI、externalSessionID、runStatus、queuedRequests、activeRunRequest 等。
 - `chat-messages/<uuid>.jsonl`：每行一条 `ChatMessage`，便于排障和增量恢复。
@@ -733,7 +733,7 @@ Windows 复刻建议：
 
 证据：
 
-- Codevoke Application Support：`Codevoke/Services/ProjectStore.swift:30`
+- acode Application Support：`Codevoke/Services/ProjectStore.swift:30`
 - 存储文件名：`Codevoke/Services/Chat/ChatSessionStore.swift:4`
 - JSONL 消息保存：`Codevoke/Services/Chat/ChatSessionStore.swift:36`
 - draft 保存：`Codevoke/Services/Chat/ChatSessionStore.swift:70`
@@ -742,7 +742,7 @@ Windows 复刻建议：
 
 ### 13.2 历史列表当前边界
 
-当前侧栏历史只显示 Codevoke 本地 session store，不再扫描或管理外部 Claude/Codex 历史。历史列表仍需满足两层过滤：
+当前侧栏历史只显示 acode 本地 session store，不再扫描或管理外部 Claude/Codex 历史。历史列表仍需满足两层过滤：
 
 1. 按项目路径/storageKey 分组。
 2. 按当前 `selectedCLI` 过滤：Claude 模式只显示 Claude 会话，Codex 模式只显示 Codex 会话。
@@ -758,7 +758,7 @@ Windows 复刻建议：
 
 Windows 复刻建议：
 
-1. 本地历史建议使用 `%APPDATA%\\Codevoke\\chat-sessions.json`、`%APPDATA%\\Codevoke\\chat-messages\\<uuid>.jsonl`、`%APPDATA%\\Codevoke\\chat-drafts.json`。
+1. 本地历史建议使用 `%APPDATA%\\acode\\chat-sessions.json`、`%APPDATA%\\acode\\chat-messages\\<uuid>.jsonl`、`%APPDATA%\\acode\\chat-drafts.json`。
 2. 需要定义旧目录迁移策略，至少覆盖未来 Windows 早期版本可能使用的临时目录。
 3. 第一版不要把外部 `.claude` / `.codex` 历史混入侧栏；如后续要做外部恢复，应作为独立入口重新设计和验证。
 4. `storageKey` 和路径归一化要重写，覆盖盘符、UNC、大小写、junction/symlink；禁止沿用 POSIX “把 `/` 转成 `-`”的规则。
@@ -942,7 +942,7 @@ Windows 缺口：
 2. Release build 通过。
 3. App-only `.app` 已复制到桌面并通过 codesign 校验；当前不再生成 DMG。
 4. 工具行旧中文前缀与状态标签已从当前 UI 路径移除。
-5. 工具详情已改为 Codevoke 风格可视化卡片，覆盖文件、搜索、终端、Todo、Agent、diff 和泛工具。
+5. 工具详情已改为 acode 风格可视化卡片，覆盖文件、搜索、终端、Todo、Agent、diff 和泛工具。
 6. `thinking` 文案替代中文思考文案，且 thinking 行无边框/卡片背景。
 7. 队列出队逻辑改为 backend stream end 后触发。
 8. stop/failed 不自动出队。
@@ -953,7 +953,7 @@ Windows 缺口：
 13. 输入框已支持自动高度和中文 IME marked text 保护。
 14. 输入框下方 CLI / 权限 / 模型选择器可见，当前默认权限为自动编辑。
 15. 子代理 Agent process 已有读取和详情 UI 链路。
-16. 历史侧栏只显示 Codevoke 本地会话，并按当前 CLI 过滤；不再扫描外部 Claude/Codex 历史。
+16. 历史侧栏只显示 acode 本地会话，并按当前 CLI 过滤；不再扫描外部 Claude/Codex 历史。
 17. 对话性能已做流式 flush、滚动节流、parse/cache 和侧栏轻量化收敛。
 
 ## 17. 未验证项与风险

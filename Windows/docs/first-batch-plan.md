@@ -1,4 +1,4 @@
-# Codevoke Windows First Batch Plan
+# acode Windows First Batch Plan
 
 ## Scope
 
@@ -32,9 +32,9 @@ The Windows runner must use the same committed source and lockfile, then record:
 | Gate | Command or evidence |
 | --- | --- |
 | Build | `npm ci`, `npm run build`, `npm run lint:smoke`, then `npm run dist:win` on Windows. |
-| Artifact inventory | `release/Codevoke-Setup-<version>-x64.exe`, `release/Codevoke-Portable-<version>-x64.exe`, `release/win-unpacked/Codevoke.exe`, and `builder-effective-config.yaml`. |
-| Code signing | `Get-AuthenticodeSignature release\\Codevoke-Setup-<version>-x64.exe` and `signtool verify /pa /v release\\Codevoke-Setup-<version>-x64.exe`; repeat for portable and `win-unpacked\\Codevoke.exe` when signing is enabled. |
-| Installer smoke | Install NSIS on a clean Windows VM, launch Codevoke, verify first window render, close, uninstall, and confirm user data is preserved unless an explicit uninstall-cleanup mode is selected. |
+| Artifact inventory | `release/acode-Setup-<version>-x64.exe`, `release/acode-Portable-<version>-x64.exe`, `release/win-unpacked/Codevoke.exe`, and `builder-effective-config.yaml`. |
+| Code signing | `Get-AuthenticodeSignature release\\acode-Setup-<version>-x64.exe` and `signtool verify /pa /v release\\acode-Setup-<version>-x64.exe`; repeat for portable and `win-unpacked\\Codevoke.exe` when signing is enabled. |
+| Installer smoke | Install NSIS on a clean Windows VM, launch acode, verify first window render, close, uninstall, and confirm user data is preserved unless an explicit uninstall-cleanup mode is selected. |
 | Portable smoke | Launch the portable EXE from a non-admin user profile, verify first window render, close, and relaunch. |
 | SmartScreen | Download the signed installer through the intended distribution path on a clean Windows VM, capture first-run reputation behavior, publisher display name, certificate chain, and any SmartScreen warning text. |
 | Logs | Preserve runner logs, signing output, installer screenshots, and first-launch app logs as release evidence. |

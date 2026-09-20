@@ -74,7 +74,7 @@ const remoteHostController = new RemoteHostController({
 });
 
 if (process.platform === "win32") {
-  app.setAppUserModelId("com.codevoke.windows");
+  app.setAppUserModelId("com.acode.windows");
 }
 
 function resolvePreloadPath(): string {
@@ -133,7 +133,7 @@ async function createMainWindow(): Promise<void> {
     minHeight: 760,
     frame: false,
     show: false,
-    title: "Codevoke",
+    title: "acode",
     icon: resolveWindowIconPath(),
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#101014" : "#f4f4f2",
     webPreferences: {
@@ -396,7 +396,7 @@ if (!gotLock) {
       console.error("Failed to init remote host", error);
     });
   }).catch((error: unknown) => {
-    console.error("Failed to start Codevoke Windows", error);
+    console.error("Failed to start acode Windows", error);
     app.quit();
   });
 

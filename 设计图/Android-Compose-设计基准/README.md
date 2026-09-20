@@ -1,6 +1,6 @@
 # Android Compose 设计基准
 
-用途：这个目录用于 Android 原生 Kotlin + Compose 还原 iOS Codevoke 的视觉和交互，不作为方案文档。Android 端稳定设计规范沉淀在 `/Users/oreo/Desktop/Codevoke/Android/DESIGN.md`。
+用途：这个目录用于 Android 原生 Kotlin + Compose 还原 iOS acode 的视觉和交互，不作为方案文档。Android 端稳定设计规范沉淀在 `/Users/oreo/Desktop/Codevoke/Android/DESIGN.md`。
 
 ## 截图
 

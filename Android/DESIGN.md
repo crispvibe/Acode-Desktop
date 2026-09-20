@@ -1,4 +1,4 @@
-# Codevoke Android Design System
+# acode Android Design System
 
 本文件是 Android Kotlin + Compose 端的设计系统基准。后续写页面前先读这里，再读 `ui/theme` 与 `ui/components`，不要在 screen 里重新发明颜色、圆角、字号、阴影和按压反馈。
 
@@ -14,7 +14,7 @@
 
 ## 产品气质
 
-Codevoke Android 不是 Material 默认工具页，也不是营销页。它要还原 iOS 端的轻玻璃、浅色、低饱和、黑白灰、高留白和胶囊操作气质。
+acode Android 不是 Material 默认工具页，也不是营销页。它要还原 iOS 端的轻玻璃、浅色、低饱和、黑白灰、高留白和胶囊操作气质。
 
 执行规则：
 - 第一屏必须直接是可用工具界面，不做介绍型 landing。

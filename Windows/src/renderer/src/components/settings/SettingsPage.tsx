@@ -726,7 +726,7 @@ function AboutSettings() {
         <div className="about-hero">
           <div className="about-logo"><AppLogo /></div>
           <div>
-            <h3>Codevoke</h3>
+            <h3>acode</h3>
             <p>一个轻量级的 Claude Code / Codex 桌面客户端</p>
           </div>
         </div>
